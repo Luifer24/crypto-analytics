@@ -1,26 +1,145 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  /* Crypto theme colors - direct HSL values for Tailwind v4 */
+  --color-crypto-bg: hsl(225 25% 8%);
+  --color-crypto-card: hsl(225 20% 12%);
+  --color-crypto-border: hsl(225 15% 18%);
+  --color-crypto-text: hsl(210 40% 98%);
+  --color-crypto-muted: hsl(215 20% 55%);
+  --color-crypto-accent: hsl(45 95% 58%);
+  --color-crypto-positive: hsl(142 70% 45%);
+  --color-crypto-negative: hsl(0 72% 51%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --radius: 0.75rem;
+
+  /* Crypto Dashboard Theme - Dark by default */
+  --background: 225 25% 8%;
+  --foreground: 210 40% 98%;
+
+  --card: 225 20% 12%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 225 20% 12%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 142 70% 45%;
+  --primary-foreground: 225 25% 8%;
+
+  --secondary: 45 95% 58%;
+  --secondary-foreground: 225 25% 8%;
+
+  --muted: 225 15% 18%;
+  --muted-foreground: 215 20% 55%;
+
+  --accent: 45 95% 58%;
+  --accent-foreground: 225 25% 8%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 225 15% 18%;
+  --input: 225 15% 18%;
+  --ring: 142 70% 45%;
+
+  --chart-1: 142 70% 45%;
+  --chart-2: 45 95% 58%;
+  --chart-3: 0 72% 51%;
+  --chart-4: 200 80% 50%;
+  --chart-5: 280 70% 50%;
+
+  --sidebar: 225 20% 10%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 142 70% 45%;
+  --sidebar-primary-foreground: 225 25% 8%;
+  --sidebar-accent: 225 15% 18%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 225 15% 18%;
+  --sidebar-ring: 142 70% 45%;
+
+  /* Crypto specific tokens */
+  --crypto-bg: hsl(225 25% 8%);
+  --crypto-card: hsl(225 20% 12%);
+  --crypto-border: hsl(225 15% 18%);
+  --crypto-text: hsl(210 40% 98%);
+  --crypto-muted: hsl(215 20% 55%);
+  --crypto-accent: hsl(45 95% 58%);
+  --crypto-positive: hsl(142 70% 45%);
+  --crypto-negative: hsl(0 72% 51%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .text-gradient-gold {
+    background: linear-gradient(135deg, hsl(45 95% 58%), hsl(35 100% 45%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 30px hsl(142 70% 45% / 0.3);
+  }
+
+  .glow-gold {
+    box-shadow: 0 0 20px hsl(45 95% 58% / 0.4);
+  }
 }
