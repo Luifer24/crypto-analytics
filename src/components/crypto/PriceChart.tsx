@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { usePriceHistory, useCryptoList, useOHLCData } from "@/hooks/useCryptoData";
+import { useCryptoList } from "@/hooks/useCryptoData";
+import {
+  useBinancePriceHistory,
+  useBinanceOHLC,
+  daysToIntervalAndLimit,
+  isBinanceSupported,
+} from "@/hooks/useBinanceData";
 import {
   AreaChart,
   Area,
@@ -15,7 +21,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { LineChart, CandlestickChart } from "lucide-react";
+import { LineChart, CandlestickChart, Database } from "lucide-react";
 import Image from "next/image";
 
 const timeRanges = [
@@ -35,10 +41,16 @@ interface PriceChartProps {
 export const PriceChart = ({ coinId }: PriceChartProps) => {
   const [days, setDays] = useState(7);
   const [chartType, setChartType] = useState<ChartType>("line");
-  const { data: priceHistory, isLoading: lineLoading } = usePriceHistory(coinId, days);
-  const { data: ohlcData, isLoading: candleLoading } = useOHLCData(coinId, days);
-  const { data: cryptoList } = useCryptoList(10);
 
+  // Get interval and limit based on days
+  const { interval, limit } = daysToIntervalAndLimit(days);
+
+  // Use Binance for price data
+  const { data: priceHistory, isLoading: lineLoading } = useBinancePriceHistory(coinId, interval, limit);
+  const { data: ohlcData, isLoading: candleLoading } = useBinanceOHLC(coinId, interval, limit);
+  const { data: cryptoList } = useCryptoList(50);
+
+  const isSupported = isBinanceSupported(coinId);
   const isLoading = chartType === "line" ? lineLoading : candleLoading;
   const coin = cryptoList?.find((c) => c.id === coinId);
 
@@ -88,6 +100,32 @@ export const PriceChart = ({ coinId }: PriceChartProps) => {
       priceMax: Math.max(...highs),
     };
   }, [candleChartData]);
+
+  // Show message if coin not supported by Binance
+  if (!isSupported) {
+    return (
+      <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+        <div className="flex items-center gap-3 mb-4">
+          {coin && (
+            <>
+              <Image src={coin.image} alt={coin.name} width={32} height={32} className="rounded-full" />
+              <div>
+                <h3 className="font-semibold text-crypto-text text-lg">{coin.name}</h3>
+                <span className="text-crypto-muted text-sm uppercase">{coin.symbol}</span>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="h-64 flex items-center justify-center bg-crypto-bg rounded-lg">
+          <div className="text-center">
+            <Database className="w-12 h-12 text-crypto-muted mx-auto mb-3" />
+            <p className="text-crypto-muted">Chart data not available for this coin</p>
+            <p className="text-crypto-muted text-sm mt-1">Only top 30 cryptocurrencies supported</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

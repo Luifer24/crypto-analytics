@@ -1,15 +1,17 @@
 "use client";
 
-import { useCryptoList, usePriceHistory } from "@/hooks/useCryptoData";
+import { useCryptoList } from "@/hooks/useCryptoData";
+import { useBinancePriceHistory } from "@/hooks/useBinanceData";
 import { useMemo } from "react";
 import { getDescriptiveStats, getReturnStats, correlation } from "@/lib/statistics";
 import { Card } from "@/components/ui/card";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, Database } from "lucide-react";
 
 export default function AnalysisPage() {
   const { data: cryptoList } = useCryptoList(10);
-  const { data: btcHistory } = usePriceHistory("bitcoin", 30);
-  const { data: ethHistory } = usePriceHistory("ethereum", 30);
+  // Use Binance for 30 days of daily data
+  const { data: btcHistory, isLoading: btcLoading } = useBinancePriceHistory("bitcoin", "1d", 30);
+  const { data: ethHistory, isLoading: ethLoading } = useBinancePriceHistory("ethereum", "1d", 30);
 
   const btcPrices = useMemo(() => btcHistory?.map(p => p.price) || [], [btcHistory]);
   const ethPrices = useMemo(() => ethHistory?.map(p => p.price) || [], [ethHistory]);
