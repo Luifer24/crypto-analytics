@@ -4,6 +4,7 @@ import { GlobalMetrics } from "@/components/crypto/GlobalMetrics";
 import { PriceChart } from "@/components/crypto/PriceChart";
 import { TopMovers } from "@/components/crypto/TopMovers";
 import { DominanceChart } from "@/components/crypto/DominanceChart";
+import { FearGreedMini } from "@/components/crypto/FearGreedIndex";
 
 export default function OverviewPage() {
   return (
@@ -18,6 +19,11 @@ export default function OverviewPage() {
 
       {/* Global Metrics */}
       <GlobalMetrics />
+
+      {/* Fear & Greed Mini Widget */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <FearGreedMini />
+      </div>
 
       {/* Main Charts Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
