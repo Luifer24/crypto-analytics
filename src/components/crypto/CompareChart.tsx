@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { usePriceHistory, useCryptoList } from "@/hooks/useCryptoData";
+import { useCryptoList } from "@/hooks/useCryptoData";
+import { useCryptoComparePriceHistory, isCryptoCompareSupported } from "@/hooks/useCryptoCompareData";
 import {
   LineChart,
   Line,
@@ -35,17 +36,24 @@ export const CompareChart = () => {
   const [days, setDays] = useState(30);
   const { data: cryptoList } = useCryptoList(50);
 
-  const { data: coin1Data } = usePriceHistory(selectedCoins[0], days);
-  const { data: coin2Data } = usePriceHistory(selectedCoins[1], days);
-  const { data: coin3Data } = usePriceHistory(selectedCoins[2] || "", days);
+  // Filter to only supported coins
+  const supportedCryptos = cryptoList?.filter(c => isCryptoCompareSupported(c.id));
+
+  const { data: coin1Data } = useCryptoComparePriceHistory(selectedCoins[0], days);
+  const { data: coin2Data } = useCryptoComparePriceHistory(selectedCoins[1], days);
+  const { data: coin3Data } = useCryptoComparePriceHistory(selectedCoins[2] || "", days);
+  const { data: coin4Data } = useCryptoComparePriceHistory(selectedCoins[3] || "", days);
+  const { data: coin5Data } = useCryptoComparePriceHistory(selectedCoins[4] || "", days);
 
   const coinDataMap = useMemo(() => {
     const map: Record<string, typeof coin1Data> = {};
     if (selectedCoins[0] && coin1Data) map[selectedCoins[0]] = coin1Data;
     if (selectedCoins[1] && coin2Data) map[selectedCoins[1]] = coin2Data;
     if (selectedCoins[2] && coin3Data) map[selectedCoins[2]] = coin3Data;
+    if (selectedCoins[3] && coin4Data) map[selectedCoins[3]] = coin4Data;
+    if (selectedCoins[4] && coin5Data) map[selectedCoins[4]] = coin5Data;
     return map;
-  }, [selectedCoins, coin1Data, coin2Data, coin3Data]);
+  }, [selectedCoins, coin1Data, coin2Data, coin3Data, coin4Data, coin5Data]);
 
   const chartData = useMemo(() => {
     const allTimestamps = new Set<number>();
@@ -91,7 +99,7 @@ export const CompareChart = () => {
 
   const addCoin = () => {
     if (selectedCoins.length < 5) {
-      const available = cryptoList?.find((c) => !selectedCoins.includes(c.id));
+      const available = supportedCryptos?.find((c) => !selectedCoins.includes(c.id));
       if (available) {
         setSelectedCoins([...selectedCoins, available.id]);
       }
@@ -123,7 +131,7 @@ export const CompareChart = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-crypto-card border-crypto-border">
-                    {cryptoList?.map((crypto) => (
+                    {supportedCryptos?.map((crypto) => (
                       <SelectItem
                         key={crypto.id}
                         value={crypto.id}
