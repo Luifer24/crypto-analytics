@@ -1,6 +1,7 @@
 "use client";
 
 import { DominanceChart } from "@/components/crypto/DominanceChart";
+import { DominanceHistoryChart } from "@/components/crypto/DominanceHistoryChart";
 import { useGlobalData, useCryptoList } from "@/hooks/useCryptoData";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -93,6 +94,8 @@ export default function DominancePage() {
           </div>
         </div>
       </div>
+
+      <DominanceHistoryChart />
 
       <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
         <h3 className="font-semibold text-crypto-text text-lg mb-6">
