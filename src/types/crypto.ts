@@ -10,6 +10,8 @@ export interface CryptoAsset {
   price_change_percentage_24h: number;
   price_change_percentage_7d_in_currency?: number;
   price_change_percentage_30d_in_currency?: number;
+  high_24h?: number;
+  low_24h?: number;
   sparkline_in_7d?: {
     price: number[];
   };
