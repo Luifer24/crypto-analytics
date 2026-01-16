@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useCryptoList } from "@/hooks/useCryptoData";
-import { useBinancePriceHistory, isBinanceSupported, type BinanceInterval } from "@/hooks/useBinanceData";
+import { useCryptoComparePriceHistory, isCryptoCompareSupported, getCryptoCompareSymbol } from "@/hooks/useCryptoCompareData";
 import { DescriptiveStatsCard } from "@/components/crypto/analysis/DescriptiveStatsCard";
 import { ReturnsAnalysisCard } from "@/components/crypto/analysis/ReturnsAnalysisCard";
 import { CorrelationMatrix } from "@/components/crypto/analysis/CorrelationMatrix";
@@ -25,15 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { BarChart3, TrendingUp, GitMerge, Activity, Waves, Layers } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const BINANCE_API = "https://api.binance.com/api/v3";
-
-// Map days to Binance interval and limit
-const daysToConfig = (days: number): { interval: BinanceInterval; limit: number } => {
-  if (days <= 30) return { interval: "1d", limit: days };
-  if (days <= 90) return { interval: "1d", limit: days };
-  if (days <= 180) return { interval: "1d", limit: days };
-  return { interval: "1d", limit: Math.min(days, 365) };
-};
+const CRYPTOCOMPARE_API = "https://min-api.cryptocompare.com/data/v2";
 
 export default function AnalysisPage() {
   const { data: cryptoList } = useCryptoList(50);
@@ -42,49 +34,31 @@ export default function AnalysisPage() {
   const [selectedForCorrelation, setSelectedForCorrelation] = useState<string[]>(["bitcoin", "ethereum", "solana", "cardano", "ripple"]);
   const [days, setDays] = useState(90);
 
-  const { interval, limit } = daysToConfig(days);
-
-  const { data: priceHistory, isLoading: priceLoading } = useBinancePriceHistory(selectedCrypto, interval, limit);
-  const { data: priceHistory2 } = useBinancePriceHistory(selectedCrypto2, interval, limit);
+  const { data: priceHistory, isLoading: priceLoading } = useCryptoComparePriceHistory(selectedCrypto, days);
+  const { data: priceHistory2 } = useCryptoComparePriceHistory(selectedCrypto2, days);
 
   // Use useQueries for dynamic number of queries (correlation matrix)
   const correlationQueries = useQueries({
-    queries: selectedForCorrelation.filter(id => isBinanceSupported(id)).map(coinId => ({
-      queryKey: ["binancePrices", coinId, interval, limit],
+    queries: selectedForCorrelation.filter(id => isCryptoCompareSupported(id)).map(coinId => ({
+      queryKey: ["cryptoComparePrices", coinId, days],
       queryFn: async () => {
-        const symbolMap: Record<string, string> = {
-          bitcoin: "BTCUSDT",
-          ethereum: "ETHUSDT",
-          binancecoin: "BNBUSDT",
-          solana: "SOLUSDT",
-          ripple: "XRPUSDT",
-          cardano: "ADAUSDT",
-          dogecoin: "DOGEUSDT",
-          polkadot: "DOTUSDT",
-          avalanche: "AVAXUSDT",
-          chainlink: "LINKUSDT",
-          polygon: "MATICUSDT",
-          litecoin: "LTCUSDT",
-          uniswap: "UNIUSDT",
-          stellar: "XLMUSDT",
-          monero: "XMRUSDT",
-          "ethereum-classic": "ETCUSDT",
-          filecoin: "FILUSDT",
-          cosmos: "ATOMUSDT",
-          tron: "TRXUSDT",
-          near: "NEARUSDT",
-        };
-        const symbol = symbolMap[coinId];
+        const symbol = getCryptoCompareSymbol(coinId);
         if (!symbol) return [];
 
+        const endpoint = days <= 1 ? "histohour" : "histoday";
+        const limit = days <= 1 ? 24 : Math.min(days, 365);
+
         const response = await fetch(
-          `${BINANCE_API}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
+          `${CRYPTOCOMPARE_API}/${endpoint}?fsym=${symbol}&tsym=USD&limit=${limit}`
         );
         if (!response.ok) throw new Error("Failed to fetch");
-        const data = await response.json();
-        return data.map((k: (string | number)[]) => ({
-          timestamp: k[0] as number,
-          price: parseFloat(k[4] as string),
+        const json = await response.json();
+
+        if (json.Response !== "Success") return [];
+
+        return json.Data.Data.map((item: { time: number; close: number }) => ({
+          timestamp: item.time * 1000,
+          price: item.close,
         }));
       },
       staleTime: 60 * 60 * 1000,
@@ -117,7 +91,7 @@ export default function AnalysisPage() {
   );
 
   const correlationAssets = useMemo(() => {
-    const supportedIds = selectedForCorrelation.filter(id => isBinanceSupported(id));
+    const supportedIds = selectedForCorrelation.filter(id => isCryptoCompareSupported(id));
     return supportedIds.map((id, idx) => {
       const query = correlationQueries[idx];
       const crypto = cryptoList?.find(c => c.id === id);
@@ -142,8 +116,8 @@ export default function AnalysisPage() {
   const selectedSymbol = cryptoList?.find(c => c.id === selectedCrypto)?.symbol || selectedCrypto;
   const selectedSymbol2 = cryptoList?.find(c => c.id === selectedCrypto2)?.symbol || selectedCrypto2;
 
-  // Filter cryptos that are supported by Binance
-  const supportedCryptos = cryptoList?.filter(c => isBinanceSupported(c.id)) || [];
+  // Filter cryptos that are supported by CryptoCompare
+  const supportedCryptos = cryptoList?.filter(c => isCryptoCompareSupported(c.id)) || [];
 
   return (
     <div className="space-y-6">

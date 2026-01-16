@@ -3,11 +3,10 @@
 import { useMemo, useState } from "react";
 import { useCryptoList } from "@/hooks/useCryptoData";
 import {
-  useBinancePriceHistory,
-  useBinanceOHLC,
-  daysToIntervalAndLimit,
-  isBinanceSupported,
-} from "@/hooks/useBinanceData";
+  useCryptoComparePriceHistory,
+  useCryptoCompareOHLC,
+  isCryptoCompareSupported,
+} from "@/hooks/useCryptoCompareData";
 import {
   AreaChart,
   Area,
@@ -42,15 +41,12 @@ export const PriceChart = ({ coinId }: PriceChartProps) => {
   const [days, setDays] = useState(7);
   const [chartType, setChartType] = useState<ChartType>("line");
 
-  // Get interval and limit based on days
-  const { interval, limit } = daysToIntervalAndLimit(days);
-
-  // Use Binance for price data
-  const { data: priceHistory, isLoading: lineLoading } = useBinancePriceHistory(coinId, interval, limit);
-  const { data: ohlcData, isLoading: candleLoading } = useBinanceOHLC(coinId, interval, limit);
+  // Use CryptoCompare for price data
+  const { data: priceHistory, isLoading: lineLoading } = useCryptoComparePriceHistory(coinId, days);
+  const { data: ohlcData, isLoading: candleLoading } = useCryptoCompareOHLC(coinId, days);
   const { data: cryptoList } = useCryptoList(50);
 
-  const isSupported = isBinanceSupported(coinId);
+  const isSupported = isCryptoCompareSupported(coinId);
   const isLoading = chartType === "line" ? lineLoading : candleLoading;
   const coin = cryptoList?.find((c) => c.id === coinId);
 
