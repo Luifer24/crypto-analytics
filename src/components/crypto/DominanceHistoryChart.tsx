@@ -10,11 +10,13 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  AreaChart,
+  Area,
 } from "recharts";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-const COINGECKO_API = "https://api.coingecko.com/api/v3";
+const CRYPTOCOMPARE_API = "https://min-api.cryptocompare.com/data/v2";
 
 const timeRanges = [
   { label: "7D", days: 7 },
@@ -23,30 +25,46 @@ const timeRanges = [
   { label: "1Y", days: 365 },
 ];
 
-// Coins to track for dominance (top coins by market cap)
+// Top coins to track - using CryptoCompare symbols
 const TRACKED_COINS = [
-  { id: "bitcoin", symbol: "BTC", color: "#f7931a" },
-  { id: "ethereum", symbol: "ETH", color: "#627eea" },
-  { id: "tether", symbol: "USDT", color: "#26a17b" },
-  { id: "binancecoin", symbol: "BNB", color: "#f3ba2f" },
-  { id: "solana", symbol: "SOL", color: "#9945ff" },
+  { symbol: "BTC", name: "Bitcoin", color: "#f7931a" },
+  { symbol: "ETH", name: "Ethereum", color: "#627eea" },
+  { symbol: "USDT", name: "Tether", color: "#26a17b" },
+  { symbol: "BNB", name: "BNB", color: "#f3ba2f" },
+  { symbol: "SOL", name: "Solana", color: "#9945ff" },
 ];
 
-interface MarketCapPoint {
+interface PricePoint {
   timestamp: number;
-  marketCap: number;
+  price: number;
 }
 
-const fetchMarketCapHistory = async (coinId: string, days: number): Promise<MarketCapPoint[]> => {
+const fetchPriceHistory = async (symbol: string, days: number): Promise<PricePoint[]> => {
+  const endpoint = days <= 1 ? "histohour" : "histoday";
+  const limit = days <= 1 ? 24 : Math.min(days, 365);
+
   const response = await fetch(
-    `${COINGECKO_API}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`
+    `${CRYPTOCOMPARE_API}/${endpoint}?fsym=${symbol}&tsym=USD&limit=${limit}`
   );
+
   if (!response.ok) throw new Error("Failed to fetch");
-  const data = await response.json();
-  return data.market_caps.map(([timestamp, marketCap]: [number, number]) => ({
-    timestamp,
-    marketCap,
+  const json = await response.json();
+
+  if (json.Response !== "Success") throw new Error("API error");
+
+  return json.Data.Data.map((item: { time: number; close: number }) => ({
+    timestamp: item.time * 1000,
+    price: item.close,
   }));
+};
+
+// Approximate circulating supplies (updated periodically)
+const CIRCULATING_SUPPLY: Record<string, number> = {
+  BTC: 19_800_000,
+  ETH: 120_000_000,
+  USDT: 140_000_000_000,
+  BNB: 145_000_000,
+  SOL: 440_000_000,
 };
 
 export const DominanceHistoryChart = () => {
@@ -54,63 +72,51 @@ export const DominanceHistoryChart = () => {
 
   const queries = useQueries({
     queries: TRACKED_COINS.map((coin) => ({
-      queryKey: ["marketCapHistory", coin.id, days],
-      queryFn: () => fetchMarketCapHistory(coin.id, days),
+      queryKey: ["cryptoCompareDominance", coin.symbol, days],
+      queryFn: () => fetchPriceHistory(coin.symbol, days),
       staleTime: 60 * 60 * 1000,
       retry: 2,
     })),
   });
 
   const isLoading = queries.some((q) => q.isLoading);
+  const hasError = queries.some((q) => q.isError);
   const hasData = queries.every((q) => q.data && q.data.length > 0);
 
   const chartData = useMemo(() => {
     if (!hasData) return [];
 
-    // Get all unique timestamps
-    const allTimestamps = new Set<number>();
-    queries.forEach((q) => {
-      q.data?.forEach((point) => {
-        // Round to hour
-        const rounded = Math.floor(point.timestamp / (1000 * 60 * 60)) * 1000 * 60 * 60;
-        allTimestamps.add(rounded);
-      });
-    });
+    // Get BTC data as reference for timestamps
+    const btcData = queries[0].data;
+    if (!btcData) return [];
 
-    const sortedTimestamps = Array.from(allTimestamps).sort();
+    return btcData.map((btcPoint, idx) => {
+      const point: Record<string, number> = { time: btcPoint.timestamp };
 
-    return sortedTimestamps.map((timestamp) => {
-      const point: Record<string, number> = { time: timestamp };
-
-      // Calculate total market cap for this timestamp
+      // Calculate market caps for each coin
       let totalMarketCap = 0;
       const marketCaps: Record<string, number> = {};
 
-      TRACKED_COINS.forEach((coin, idx) => {
-        const data = queries[idx].data;
-        if (!data) return;
+      TRACKED_COINS.forEach((coin, coinIdx) => {
+        const coinData = queries[coinIdx].data;
+        if (!coinData || !coinData[idx]) return;
 
-        // Find closest data point
-        const closest = data.reduce((prev, curr) =>
-          Math.abs(curr.timestamp - timestamp) < Math.abs(prev.timestamp - timestamp)
-            ? curr
-            : prev
-        );
+        const price = coinData[idx].price;
+        const supply = CIRCULATING_SUPPLY[coin.symbol] || 1;
+        const marketCap = price * supply;
 
-        marketCaps[coin.id] = closest.marketCap;
-        totalMarketCap += closest.marketCap;
+        marketCaps[coin.symbol] = marketCap;
+        totalMarketCap += marketCap;
       });
+
+      // Estimate total crypto market cap (tracked coins are ~75% of market)
+      const estimatedTotalMarket = totalMarketCap / 0.75;
 
       // Calculate dominance percentages
-      // We need to estimate "Others" - assume tracked coins are ~70% of market
-      const trackedTotal = totalMarketCap;
-      const estimatedTotal = trackedTotal / 0.7; // Rough estimate
-
       TRACKED_COINS.forEach((coin) => {
-        point[coin.symbol] = (marketCaps[coin.id] / estimatedTotal) * 100;
+        point[coin.symbol] = ((marketCaps[coin.symbol] || 0) / estimatedTotalMarket) * 100;
       });
 
-      // Others
       point["Others"] = 100 - TRACKED_COINS.reduce((sum, coin) => sum + (point[coin.symbol] || 0), 0);
 
       return point;
@@ -145,20 +151,23 @@ export const DominanceHistoryChart = () => {
       <div className="h-80">
         {isLoading ? (
           <div className="animate-pulse h-full bg-crypto-border rounded" />
+        ) : hasError ? (
+          <div className="h-full flex items-center justify-center text-crypto-muted">
+            Error loading data. Please try again.
+          </div>
         ) : chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
+            <AreaChart data={chartData} stackOffset="expand">
               <XAxis
                 dataKey="time"
-                tickFormatter={(ts) => format(new Date(ts), days <= 7 ? "MMM d" : "MMM d")}
+                tickFormatter={(ts) => format(new Date(ts), "MMM d")}
                 stroke="#64748b"
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
               />
               <YAxis
-                domain={[0, 70]}
-                tickFormatter={(v) => `${v}%`}
+                tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
                 stroke="#64748b"
                 fontSize={12}
                 tickLine={false}
@@ -179,7 +188,7 @@ export const DominanceHistoryChart = () => {
                             className="text-sm"
                             style={{ color: entry.color }}
                           >
-                            {entry.name}: {typeof entry.value === "number" ? entry.value.toFixed(2) : 0}%
+                            {entry.name}: {typeof entry.value === "number" ? (entry.value * 100).toFixed(2) : 0}%
                           </p>
                         ))}
                       </div>
@@ -194,30 +203,29 @@ export const DominanceHistoryChart = () => {
                 )}
               />
               {TRACKED_COINS.map((coin) => (
-                <Line
-                  key={coin.id}
+                <Area
+                  key={coin.symbol}
                   type="monotone"
                   dataKey={coin.symbol}
+                  stackId="1"
                   stroke={coin.color}
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls
+                  fill={coin.color}
+                  fillOpacity={0.8}
                 />
               ))}
-              <Line
+              <Area
                 type="monotone"
                 dataKey="Others"
+                stackId="1"
                 stroke="#64748b"
-                strokeWidth={2}
-                dot={false}
-                strokeDasharray="5 5"
-                connectNulls
+                fill="#64748b"
+                fillOpacity={0.5}
               />
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         ) : (
           <div className="h-full flex items-center justify-center text-crypto-muted">
-            Failed to load dominance data
+            No data available
           </div>
         )}
       </div>
