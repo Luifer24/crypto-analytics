@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   TrendingUp,
-  BarChart3,
   PieChart,
   ArrowLeftRight,
   Star,
@@ -18,7 +17,6 @@ import {
 const navItems = [
   { icon: LayoutDashboard, label: "Overview", path: "/" },
   { icon: TrendingUp, label: "Markets", path: "/markets" },
-  { icon: BarChart3, label: "Charts", path: "/charts" },
   { icon: PieChart, label: "Dominance", path: "/dominance" },
   { icon: ArrowLeftRight, label: "Compare", path: "/compare" },
   { icon: Star, label: "Watchlist", path: "/watchlist" },
