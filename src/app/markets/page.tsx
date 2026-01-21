@@ -18,13 +18,11 @@ function MarketsContent() {
   );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Sync URL params with state
+  // Sync URL params with state (only when URL changes)
   useEffect(() => {
     const sectorParam = searchParams.get("sector");
-    if (sectorParam !== selectedSector) {
-      setSelectedSector(sectorParam);
-    }
-  }, [searchParams, selectedSector]);
+    setSelectedSector(sectorParam);
+  }, [searchParams]);
 
   // Update URL when sector changes
   const handleSectorChange = (sectorId: string | null) => {
