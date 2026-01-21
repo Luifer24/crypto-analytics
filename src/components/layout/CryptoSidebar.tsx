@@ -12,11 +12,13 @@ import {
   FlaskConical,
   Globe,
   Link2,
+  PieChart,
 } from "lucide-react";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Overview", path: "/" },
   { icon: TrendingUp, label: "Markets", path: "/markets" },
+  { icon: PieChart, label: "Sectors", path: "/sectors" },
   { icon: Gauge, label: "Signals", path: "/signals" },
   { icon: ArrowLeftRight, label: "Compare", path: "/compare" },
   { icon: Star, label: "Watchlist", path: "/watchlist" },

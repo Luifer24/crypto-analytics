@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
         hostname: "assets.coingecko.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "www.cryptocompare.com",
+        pathname: "/**",
+      },
     ],
   },
 };

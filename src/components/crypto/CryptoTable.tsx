@@ -1,9 +1,8 @@
 "use client";
 
-import { useCryptoList } from "@/hooks/useCryptoData";
+import { useCryptoCompareList } from "@/hooks/useCryptoCompareList";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MiniSparkline } from "./MiniSparkline";
 import {
   Table,
   TableBody,
@@ -13,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Image from "next/image";
+import type { CryptoAsset } from "@/types/crypto";
 
 const formatPrice = (price: number): string => {
   if (price >= 1000) return `$${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
@@ -31,10 +31,16 @@ const formatMarketCap = (num: number): string => {
 interface CryptoTableProps {
   limit?: number;
   onSelectCoin?: (coinId: string) => void;
+  data?: CryptoAsset[]; // Optional: pass pre-filtered data
+  isLoading?: boolean;
 }
 
-export const CryptoTable = ({ limit = 20, onSelectCoin }: CryptoTableProps) => {
-  const { data: cryptos, isLoading } = useCryptoList(limit);
+export const CryptoTable = ({ limit = 20, onSelectCoin, data, isLoading: externalLoading }: CryptoTableProps) => {
+  const { data: fetchedCryptos, isLoading: fetchLoading } = useCryptoCompareList(limit);
+
+  // Use passed data if provided, otherwise use fetched data
+  const cryptos = data ?? fetchedCryptos;
+  const isLoading = data ? externalLoading : fetchLoading;
 
   if (isLoading) {
     return (
@@ -57,16 +63,15 @@ export const CryptoTable = ({ limit = 20, onSelectCoin }: CryptoTableProps) => {
             <TableHead className="text-crypto-muted">Name</TableHead>
             <TableHead className="text-crypto-muted text-right">Price</TableHead>
             <TableHead className="text-crypto-muted text-right">24h %</TableHead>
-            <TableHead className="text-crypto-muted text-right hidden md:table-cell">7d %</TableHead>
-            <TableHead className="text-crypto-muted text-right hidden lg:table-cell">Market Cap</TableHead>
-            <TableHead className="text-crypto-muted text-right hidden xl:table-cell">Volume (24h)</TableHead>
-            <TableHead className="text-crypto-muted hidden xl:table-cell w-32">Last 7 Days</TableHead>
+            <TableHead className="text-crypto-muted text-right hidden md:table-cell">Market Cap</TableHead>
+            <TableHead className="text-crypto-muted text-right hidden lg:table-cell">Volume (24h)</TableHead>
+            <TableHead className="text-crypto-muted text-right hidden xl:table-cell">24h High</TableHead>
+            <TableHead className="text-crypto-muted text-right hidden xl:table-cell">24h Low</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {cryptos?.map((crypto) => {
             const change24h = crypto.price_change_percentage_24h || 0;
-            const change7d = crypto.price_change_percentage_7d_in_currency || 0;
 
             return (
               <TableRow
@@ -112,30 +117,17 @@ export const CryptoTable = ({ limit = 20, onSelectCoin }: CryptoTableProps) => {
                     {Math.abs(change24h).toFixed(2)}%
                   </span>
                 </TableCell>
-                <TableCell className="text-right hidden md:table-cell">
-                  <span
-                    className={cn(
-                      "font-medium",
-                      change7d >= 0 ? "text-crypto-positive" : "text-crypto-negative"
-                    )}
-                  >
-                    {change7d >= 0 ? "+" : ""}
-                    {change7d.toFixed(2)}%
-                  </span>
-                </TableCell>
-                <TableCell className="text-right hidden lg:table-cell text-crypto-text font-mono">
+                <TableCell className="text-right hidden md:table-cell text-crypto-text font-mono">
                   {formatMarketCap(crypto.market_cap)}
                 </TableCell>
-                <TableCell className="text-right hidden xl:table-cell text-crypto-muted font-mono">
+                <TableCell className="text-right hidden lg:table-cell text-crypto-muted font-mono">
                   {formatMarketCap(crypto.total_volume)}
                 </TableCell>
-                <TableCell className="hidden xl:table-cell">
-                  {crypto.sparkline_in_7d?.price && (
-                    <MiniSparkline
-                      data={crypto.sparkline_in_7d.price}
-                      positive={change7d >= 0}
-                    />
-                  )}
+                <TableCell className="text-right hidden xl:table-cell text-crypto-positive font-mono">
+                  {crypto.high_24h ? formatPrice(crypto.high_24h) : "-"}
+                </TableCell>
+                <TableCell className="text-right hidden xl:table-cell text-crypto-negative font-mono">
+                  {crypto.low_24h ? formatPrice(crypto.low_24h) : "-"}
                 </TableCell>
               </TableRow>
             );
