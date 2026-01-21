@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   useFearGreedCurrent,
   useFearGreedHistory,
@@ -25,12 +25,15 @@ import { cn } from "@/lib/utils";
 const FearGreedGauge = ({ value }: { value: number }) => {
   const color = getFearGreedColor(value);
 
-  // Needle angle: 0 = left (Extreme Fear), 180 = right (Extreme Greed)
-  const needleAngle = (value / 100) * 180;
+  // Needle angle calculation for semicircular gauge:
+  // - Value 0 (left): needle points left = -90° rotation from up
+  // - Value 50 (top): needle points up = 0° rotation
+  // - Value 100 (right): needle points right = +90° rotation
+  const needleAngle = ((value / 100) * 180) - 90;
 
   return (
     <div className="relative w-full max-w-[280px] mx-auto">
-      <svg viewBox="0 0 200 120" className="w-full">
+      <svg viewBox="0 0 200 155" className="w-full">
         <defs>
           {/* Gradient for the arc */}
           <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -89,7 +92,7 @@ const FearGreedGauge = ({ value }: { value: number }) => {
         })}
 
         {/* Needle */}
-        <g transform={`rotate(${needleAngle - 180}, 100, 100)`}>
+        <g transform={`rotate(${needleAngle}, 100, 100)`}>
           <path
             d="M 100 100 L 96 95 L 100 30 L 104 95 Z"
             fill={color}
@@ -99,24 +102,38 @@ const FearGreedGauge = ({ value }: { value: number }) => {
           <circle cx="100" cy="100" r="4" fill="#0f172a" />
         </g>
 
-        {/* Labels */}
-        <text x="15" y="115" fontSize="8" fill="#64748b" textAnchor="start">0</text>
-        <text x="100" y="30" fontSize="8" fill="#64748b" textAnchor="middle">50</text>
-        <text x="185" y="115" fontSize="8" fill="#64748b" textAnchor="end">100</text>
-      </svg>
+        {/* Labels at edges */}
+        <text x="15" y="115" fontSize="10" fill="#64748b" textAnchor="start">0</text>
+        <text x="185" y="115" fontSize="10" fill="#64748b" textAnchor="end">100</text>
 
-      {/* Value display */}
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-center">
-        <span className="text-5xl font-bold" style={{ color }}>{value}</span>
-      </div>
+        {/* Value display below the gauge */}
+        <text
+          x="100"
+          y="145"
+          fontSize="36"
+          fontWeight="bold"
+          fill={color}
+          textAnchor="middle"
+        >
+          {value}
+        </text>
+      </svg>
     </div>
   );
 };
 
+const fearGreedTimeRanges = [
+  { label: "90D", days: 90 },
+  { label: "1Y", days: 365 },
+  { label: "2Y", days: 730 },
+  { label: "Max", days: 2000 }, // Alternative.me has data from ~2018
+];
+
 export const FearGreedCard = () => {
+  const [chartDays, setChartDays] = useState(365);
   const { data: current, isLoading: currentLoading } = useFearGreedCurrent();
-  const { data: history, isLoading: historyLoading } = useFearGreedHistory(365);
-  const { data: btcPrices } = useCryptoComparePriceHistory("bitcoin", 365);
+  const { data: history, isLoading: historyLoading } = useFearGreedHistory(chartDays);
+  const { data: btcPrices } = useCryptoComparePriceHistory("bitcoin", chartDays);
 
   // Get historical values
   const historicalValues = useMemo(() => {
@@ -126,7 +143,7 @@ export const FearGreedCard = () => {
     const lastWeek = history[7];
     const lastMonth = history[30];
 
-    // Find max and min in last year
+    // Find max and min in selected period
     let max = { value: 0, timestamp: 0 };
     let min = { value: 100, timestamp: 0 };
 
@@ -148,7 +165,7 @@ export const FearGreedCard = () => {
     ]));
 
     return history
-      .slice(0, 90)
+      .slice(0, chartDays)
       .reverse()
       .map((item) => {
         const dateStr = new Date(item.timestamp).toDateString();
@@ -224,7 +241,9 @@ export const FearGreedCard = () => {
               <ValueBadge value={historicalValues.lastMonth?.value || 0} label="Last Month" />
 
               <div className="pt-3 mt-3 border-t border-crypto-border">
-                <h4 className="text-sm font-semibold text-crypto-text mb-3">Year Extremes</h4>
+                <h4 className="text-sm font-semibold text-crypto-text mb-3">
+                  {chartDays <= 365 ? "Year" : chartDays <= 730 ? "2Y" : "Max"} Extremes
+                </h4>
                 <div className="flex items-center justify-between py-2">
                   <span className="text-crypto-muted text-sm">
                     Max ({format(new Date(historicalValues.max.timestamp), "MMM d, yyyy")})
@@ -264,13 +283,31 @@ export const FearGreedCard = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-crypto-text">Fear & Greed Chart</h4>
-            <div className="flex items-center gap-4 text-xs text-crypto-muted">
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-0.5 bg-[#f59e0b] rounded" /> Fear & Greed
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-0.5 bg-[#64748b] rounded" /> BTC Price
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4 text-xs text-crypto-muted">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 bg-[#f59e0b] rounded" /> Fear & Greed
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 bg-[#64748b] rounded" /> BTC Price
+                </span>
+              </div>
+              <div className="flex items-center gap-1 bg-crypto-bg rounded-lg p-1">
+                {fearGreedTimeRanges.map((range) => (
+                  <button
+                    key={range.days}
+                    onClick={() => setChartDays(range.days)}
+                    className={cn(
+                      "px-2 py-0.5 text-xs font-medium rounded transition-colors",
+                      chartDays === range.days
+                        ? "bg-crypto-accent text-crypto-bg"
+                        : "text-crypto-muted hover:text-crypto-text"
+                    )}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -289,11 +326,18 @@ export const FearGreedCard = () => {
 
                   <XAxis
                     dataKey="time"
-                    tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                    tickFormatter={(ts) => {
+                      const date = new Date(ts);
+                      if (chartDays > 365) {
+                        return format(date, "MMM yyyy");
+                      }
+                      return format(date, "MMM d");
+                    }}
                     stroke="#475569"
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
+                    interval="preserveStartEnd"
                   />
                   <YAxis
                     yAxisId="fg"

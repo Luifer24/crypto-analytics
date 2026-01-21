@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useCryptoList } from "@/hooks/useCryptoData";
 import { FearGreedCard } from "@/components/crypto/FearGreedIndex";
+import { DominanceHistoryChart } from "@/components/crypto/DominanceHistoryChart";
 import {
   BarChart,
   Bar,
@@ -126,6 +127,9 @@ export default function SignalsPage() {
 
       {/* Fear & Greed Index */}
       <FearGreedCard />
+
+      {/* Bitcoin Dominance */}
+      <DominanceHistoryChart />
 
       {/* Market Breadth Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
