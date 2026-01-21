@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { useCryptoCompareList } from "@/hooks/useCryptoCompareList";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -13,6 +14,9 @@ import {
 } from "@/components/ui/table";
 import Image from "next/image";
 import type { CryptoAsset } from "@/types/crypto";
+
+type SortColumn = "rank" | "name" | "price" | "change24h" | "marketCap" | "volume" | "high24h" | "low24h";
+type SortDirection = "asc" | "desc";
 
 const formatPrice = (price: number): string => {
   if (price >= 1000) return `$${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
@@ -37,10 +41,73 @@ interface CryptoTableProps {
 
 export const CryptoTable = ({ limit = 20, onSelectCoin, data, isLoading: externalLoading }: CryptoTableProps) => {
   const { data: fetchedCryptos, isLoading: fetchLoading } = useCryptoCompareList(limit);
+  const [sortColumn, setSortColumn] = useState<SortColumn>("rank");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   // Use passed data if provided, otherwise use fetched data
-  const cryptos = data ?? fetchedCryptos;
+  const rawCryptos = data ?? fetchedCryptos;
   const isLoading = data ? externalLoading : fetchLoading;
+
+  // Sort cryptos based on selected column
+  const cryptos = useMemo(() => {
+    if (!rawCryptos) return rawCryptos;
+
+    return [...rawCryptos].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortColumn) {
+        case "rank":
+          comparison = (a.market_cap_rank || 0) - (b.market_cap_rank || 0);
+          break;
+        case "name":
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case "price":
+          comparison = (a.current_price || 0) - (b.current_price || 0);
+          break;
+        case "change24h":
+          comparison = (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0);
+          break;
+        case "marketCap":
+          comparison = (a.market_cap || 0) - (b.market_cap || 0);
+          break;
+        case "volume":
+          comparison = (a.total_volume || 0) - (b.total_volume || 0);
+          break;
+        case "high24h":
+          comparison = (a.high_24h || 0) - (b.high_24h || 0);
+          break;
+        case "low24h":
+          comparison = (a.low_24h || 0) - (b.low_24h || 0);
+          break;
+      }
+
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [rawCryptos, sortColumn, sortDirection]);
+
+  // Handle column header click
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column with default direction
+      setSortColumn(column);
+      // Default to desc for numeric values (show highest first), asc for name/rank
+      setSortDirection(column === "name" || column === "rank" ? "asc" : "desc");
+    }
+  };
+
+  // Sort indicator component
+  const SortIndicator = ({ column }: { column: SortColumn }) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
+    }
+    return sortDirection === "asc"
+      ? <ArrowUp className="w-3 h-3 ml-1" />
+      : <ArrowDown className="w-3 h-3 ml-1" />;
+  };
 
   if (isLoading) {
     return (
@@ -59,14 +126,78 @@ export const CryptoTable = ({ limit = 20, onSelectCoin, data, isLoading: externa
       <Table>
         <TableHeader>
           <TableRow className="border-crypto-border hover:bg-transparent">
-            <TableHead className="text-crypto-muted w-12">#</TableHead>
-            <TableHead className="text-crypto-muted">Name</TableHead>
-            <TableHead className="text-crypto-muted text-right">Price</TableHead>
-            <TableHead className="text-crypto-muted text-right">24h %</TableHead>
-            <TableHead className="text-crypto-muted text-right hidden md:table-cell">Market Cap</TableHead>
-            <TableHead className="text-crypto-muted text-right hidden lg:table-cell">Volume (24h)</TableHead>
-            <TableHead className="text-crypto-muted text-right hidden xl:table-cell">24h High</TableHead>
-            <TableHead className="text-crypto-muted text-right hidden xl:table-cell">24h Low</TableHead>
+            <TableHead
+              className="text-crypto-muted w-12 cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("rank")}
+            >
+              <span className="inline-flex items-center">
+                #
+                <SortIndicator column="rank" />
+              </span>
+            </TableHead>
+            <TableHead
+              className="text-crypto-muted cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("name")}
+            >
+              <span className="inline-flex items-center">
+                Name
+                <SortIndicator column="name" />
+              </span>
+            </TableHead>
+            <TableHead
+              className="text-crypto-muted text-right cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("price")}
+            >
+              <span className="inline-flex items-center justify-end w-full">
+                Price
+                <SortIndicator column="price" />
+              </span>
+            </TableHead>
+            <TableHead
+              className="text-crypto-muted text-right cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("change24h")}
+            >
+              <span className="inline-flex items-center justify-end w-full">
+                24h %
+                <SortIndicator column="change24h" />
+              </span>
+            </TableHead>
+            <TableHead
+              className="text-crypto-muted text-right hidden md:table-cell cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("marketCap")}
+            >
+              <span className="inline-flex items-center justify-end w-full">
+                Market Cap
+                <SortIndicator column="marketCap" />
+              </span>
+            </TableHead>
+            <TableHead
+              className="text-crypto-muted text-right hidden lg:table-cell cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("volume")}
+            >
+              <span className="inline-flex items-center justify-end w-full">
+                Volume (24h)
+                <SortIndicator column="volume" />
+              </span>
+            </TableHead>
+            <TableHead
+              className="text-crypto-muted text-right hidden xl:table-cell cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("high24h")}
+            >
+              <span className="inline-flex items-center justify-end w-full">
+                24h High
+                <SortIndicator column="high24h" />
+              </span>
+            </TableHead>
+            <TableHead
+              className="text-crypto-muted text-right hidden xl:table-cell cursor-pointer hover:text-crypto-text transition-colors select-none"
+              onClick={() => handleSort("low24h")}
+            >
+              <span className="inline-flex items-center justify-end w-full">
+                24h Low
+                <SortIndicator column="low24h" />
+              </span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

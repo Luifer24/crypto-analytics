@@ -32,83 +32,194 @@ interface CryptoCompareResponse {
 
 // Map CryptoCompare symbols to CoinGecko IDs for sector matching
 const SYMBOL_TO_COINGECKO: Record<string, string> = {
+  // Layer 1
   BTC: "bitcoin",
   ETH: "ethereum",
   XRP: "ripple",
-  USDT: "tether",
   SOL: "solana",
-  BNB: "binancecoin",
-  USDC: "usd-coin",
-  DOGE: "dogecoin",
   ADA: "cardano",
-  TRX: "tron",
   AVAX: "avalanche-2",
-  LINK: "chainlink",
   DOT: "polkadot",
-  MATIC: "matic-network",
-  TON: "the-open-network",
-  SHIB: "shiba-inu",
-  LTC: "litecoin",
-  BCH: "bitcoin-cash",
-  DAI: "dai",
-  UNI: "uniswap",
-  ATOM: "cosmos",
-  XLM: "stellar",
-  ETC: "ethereum-classic",
-  XMR: "monero",
+  TRX: "tron",
   NEAR: "near",
-  OKB: "okb",
-  APT: "aptos",
-  FIL: "filecoin",
-  ARB: "arbitrum",
-  MKR: "maker",
-  OP: "optimism",
-  INJ: "injective-protocol",
-  AAVE: "aave",
+  ATOM: "cosmos",
   ALGO: "algorand",
   FTM: "fantom",
+  APT: "aptos",
+  SUI: "sui",
+  HBAR: "hedera-hashgraph",
+  ICP: "internet-computer",
+  XLM: "stellar",
+  ETC: "ethereum-classic",
+  KAS: "kaspa",
+  SEI: "sei-network",
+  INJ: "injective-protocol",
+  TON: "the-open-network",
+  MNT: "mantle",
+  TIA: "celestia",
+
+  // Layer 2
+  MATIC: "matic-network",
+  POL: "matic-network",
+  ARB: "arbitrum",
+  OP: "optimism",
+  IMX: "immutable-x",
+  STRK: "starknet",
+  METIS: "metis-token",
+  SKL: "skale",
+  LRC: "loopring",
+  ZK: "zksync",
+  MANTA: "manta-network",
+  BLAST: "blast",
+
+  // DeFi
+  UNI: "uniswap",
+  AAVE: "aave",
+  LINK: "chainlink",
+  LDO: "lido-dao",
+  MKR: "maker",
+  COMP: "compound-governance-token",
+  CRV: "curve-dao-token",
+  CAKE: "pancakeswap-token",
+  RPL: "rocket-pool",
+  CVX: "convex-finance",
+  FXS: "frax-share",
+  GMX: "gmx",
+  DYDX: "dydx",
+  ONEINCH: "1inch",
+  JUP: "jupiter-exchange-solana",
+  RAY: "raydium",
+  ONDO: "ondo-finance",
+  ENA: "ethena",
+  PENDLE: "pendle",
+  JTO: "jito-governance-token",
+  RUNE: "thorchain",
+  SNX: "synthetix-network-token",
+  YFI: "yearn-finance",
+  SUSHI: "sushi",
+  BAL: "balancer",
+
+  // Exchange
+  BNB: "binancecoin",
+  OKB: "okb",
+  CRO: "crypto-com-chain",
+  KCS: "kucoin-shares",
+  LEO: "leo-token",
+  BGB: "bitget-token",
+  GT: "gatechain-token",
+  MX: "mx-token",
+  HT: "huobi-token",
+
+  // Stablecoins
+  USDT: "tether",
+  USDC: "usd-coin",
+  DAI: "dai",
+  FDUSD: "first-digital-usd",
+  FRAX: "frax",
+  TUSD: "true-usd",
+  USDP: "paxos-standard",
+  USDD: "usdd",
+  USDE: "ethena-usde",
+  PYUSD: "paypal-usd",
+
+  // Gaming & NFT
   SAND: "the-sandbox",
   MANA: "decentraland",
   AXS: "axie-infinity",
   GALA: "gala",
+  ENJ: "enjincoin",
+  ILV: "illuvium",
+  GMT: "stepn",
+  APE: "apecoin",
+  RON: "ronin",
+  FLOW: "flow",
+  BEAM: "beam-2",
+  PIXEL: "pixels",
+  MAGIC: "magic",
+  PRIME: "echelon-prime",
+  BLUR: "blur",
+
+  // AI & Data
+  RENDER: "render-token",
+  FET: "fetch-ai",
+  AGIX: "singularitynet",
+  OCEAN: "ocean-protocol",
+  GRT: "the-graph",
+  TAO: "bittensor",
+  AKT: "akash-network",
+  WLD: "worldcoin-wld",
+  ARKM: "arkham",
+  NMR: "numeraire",
+  ASI: "artificial-superintelligence-alliance",
+  THETA: "theta-token",
+  TFUEL: "theta-fuel",
+  GLM: "golem",
+  IOTX: "iotex",
+  AR: "arweave",
+  FIL: "filecoin",
+
+  // Oracles
+  BAND: "band-protocol",
+  API3: "api3",
+  UMA: "uma",
+  TRB: "tellor",
+  PYTH: "pyth-network",
+  DIA: "dia-data",
+
+  // Meme
+  DOGE: "dogecoin",
+  SHIB: "shiba-inu",
   PEPE: "pepe",
   BONK: "bonk",
   FLOKI: "floki",
   WIF: "dogwifcoin",
-  RENDER: "render-token",
-  FET: "fetch-ai",
-  AGIX: "singularitynet",
-  GRT: "the-graph",
-  LDO: "lido-dao",
-  CRV: "curve-dao-token",
-  COMP: "compound-governance-token",
-  SNX: "synthetix-network-token",
-  SUSHI: "sushi",
-  YFI: "yearn-finance",
-  IMX: "immutable-x",
-  SUI: "sui",
-  SEI: "sei-network",
-  STX: "stacks",
-  KAVA: "kava",
+  MEME: "memecoin-2",
+  BOME: "book-of-meme",
+  MEW: "cat-in-a-dogs-world",
+  BRETT: "brett",
+  POPCAT: "popcat",
+  MOG: "mog-coin",
+  WOJAK: "wojak",
+  BABYDOGE: "babydoge",
+
+  // Privacy
+  XMR: "monero",
   ZEC: "zcash",
   DASH: "dash",
-  NEO: "neo",
-  EOS: "eos",
-  ZIL: "zilliqa",
-  IOTA: "iota",
-  XTZ: "tezos",
-  VET: "vechain",
-  THETA: "theta-token",
-  HNT: "helium",
+  SCRT: "secret",
+  ROSE: "oasis-network",
+  ZEN: "horizen",
+  XVG: "verge",
+
+  // Infrastructure
+  WBTC: "wrapped-bitcoin",
+  STETH: "lido-staked-ether",
+  WETH: "weth",
+  WSTETH: "wrapped-steth",
   QNT: "quant-network",
   EGLD: "elrond-erd-2",
-  FLOW: "flow",
-  HBAR: "hedera-hashgraph",
-  ICP: "internet-computer",
-  KAS: "kaspa",
-  CRO: "crypto-com-chain",
-  LEO: "leo-token",
-  KCS: "kucoin-shares",
+  VET: "vechain",
+  HNT: "helium",
+  CFX: "conflux-token",
+  STX: "stacks",
+  CKB: "nervos-network",
+  KAVA: "kava",
+  NEO: "neo",
+  IOTA: "iota",
+  XTZ: "tezos",
+  EOS: "eos",
+  ZIL: "zilliqa",
+
+  // RWA
+  CFG: "centrifuge",
+  MPL: "maple",
+  GFI: "goldfinch",
+  POLYX: "polymesh",
+  OM: "mantra-dao",
+
+  // Legacy/Other
+  LTC: "litecoin",
+  BCH: "bitcoin-cash",
 };
 
 // Convert CryptoCompare symbol to CoinGecko ID
@@ -122,6 +233,7 @@ const fetchTopCoins = async (limit: number): Promise<CryptoAsset[]> => {
   const perPage = 100;
   const pages = Math.ceil(limit / perPage);
   const allCoins: CryptoAsset[] = [];
+  const seenIds = new Set<string>(); // Track seen IDs to avoid duplicates
 
   for (let page = 0; page < pages; page++) {
     const pageLimit = Math.min(perPage, limit - page * perPage);
@@ -139,14 +251,17 @@ const fetchTopCoins = async (limit: number): Promise<CryptoAsset[]> => {
       break;
     }
 
-    const coins = json.Data.filter((coin) => coin.RAW?.USD).map(
-      (coin, index): CryptoAsset => {
+    const coins = json.Data.filter((coin) => coin.RAW?.USD)
+      .map((coin, index): CryptoAsset => {
         const raw = coin.RAW!.USD;
+        const imageUrl = coin.CoinInfo.ImageUrl
+          ? `https://www.cryptocompare.com${coin.CoinInfo.ImageUrl}`
+          : `https://ui-avatars.com/api/?name=${coin.CoinInfo.Name}&background=1e293b&color=fff&size=64`;
         return {
           id: toCoinGeckoId(coin.CoinInfo.Name),
           symbol: coin.CoinInfo.Name.toLowerCase(),
           name: coin.CoinInfo.FullName,
-          image: `https://www.cryptocompare.com${coin.CoinInfo.ImageUrl}`,
+          image: imageUrl,
           current_price: raw.PRICE,
           market_cap: raw.MKTCAP,
           market_cap_rank: page * perPage + index + 1,
@@ -159,8 +274,15 @@ const fetchTopCoins = async (limit: number): Promise<CryptoAsset[]> => {
           circulating_supply: raw.CIRCULATINGSUPPLY,
           total_supply: raw.SUPPLY || null,
         };
-      }
-    );
+      })
+      .filter((coin) => {
+        // Deduplicate by ID (keep first occurrence with better rank)
+        if (seenIds.has(coin.id)) {
+          return false;
+        }
+        seenIds.add(coin.id);
+        return true;
+      });
 
     allCoins.push(...coins);
 

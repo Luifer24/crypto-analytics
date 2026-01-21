@@ -8,7 +8,7 @@ import { TrendingUp, TrendingDown, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function SectorsPage() {
-  const { sectors, isLoading } = useSectorPerformance(250);
+  const { sectors, isLoading } = useSectorPerformance(450);
 
   // Calculate totals for market overview
   const totals = useMemo(() => {

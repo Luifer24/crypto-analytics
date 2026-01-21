@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CryptoTable } from "@/components/crypto/CryptoTable";
 import { PriceChart } from "@/components/crypto/PriceChart";
@@ -13,20 +13,13 @@ function MarketsContent() {
   const router = useRouter();
 
   const [selectedCoin, setSelectedCoin] = useState<string | null>(null);
-  const [selectedSector, setSelectedSector] = useState<string | null>(
-    searchParams.get("sector")
-  );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Sync URL params with state (only when URL changes)
-  useEffect(() => {
-    const sectorParam = searchParams.get("sector");
-    setSelectedSector(sectorParam);
-  }, [searchParams]);
+  // Use URL as single source of truth for sector
+  const selectedSector = searchParams.get("sector");
 
   // Update URL when sector changes
   const handleSectorChange = (sectorId: string | null) => {
-    setSelectedSector(sectorId);
     if (sectorId) {
       router.push(`/markets?sector=${sectorId}`, { scroll: false });
     } else {
@@ -35,7 +28,7 @@ function MarketsContent() {
   };
 
   const sectors = useAllSectors();
-  const { coins, sectorInfo, isLoading } = useCoinsBySector(selectedSector, 250);
+  const { coins, sectorInfo, isLoading } = useCoinsBySector(selectedSector, 450);
 
   const selectedSectorName = selectedSector
     ? sectors.find((s) => s.id === selectedSector)?.name || "All Sectors"

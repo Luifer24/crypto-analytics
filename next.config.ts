@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
         hostname: "www.cryptocompare.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "ui-avatars.com",
+        pathname: "/**",
+      },
     ],
   },
 };
