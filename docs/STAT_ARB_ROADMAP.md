@@ -84,10 +84,11 @@ src/
 - [x] Filtros: correlación, p-value, half-life, señales
 - [x] Link en navegación lateral
 
-### Fase 3: Kalman Filter
-- [ ] Clase `KalmanFilter`
-- [ ] Hook `useKalmanHedge`
-- [ ] Comparación β estático vs dinámico en UI
+### Fase 3: Kalman Filter ✅ COMPLETADA
+- [x] Clase `KalmanFilter` (`src/lib/filters/kalman.ts`)
+- [x] Hook `useKalmanHedge` (`src/hooks/useKalmanHedge.ts`)
+- [x] Comparación β estático vs dinámico en /compare
+- [x] Gráfico de evolución del hedge ratio dinámico
 
 ### Fase 4: Backtesting
 - [ ] Motor `runBacktest()`

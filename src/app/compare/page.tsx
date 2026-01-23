@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Image from "next/image";
-import { TrendingUp, TrendingDown, Activity, GitMerge, Target, AlertTriangle, FlaskConical, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, GitMerge, Target, AlertTriangle, FlaskConical, Clock, CheckCircle2, XCircle, Zap } from "lucide-react";
 
 // Import cointegration tests
 import {
@@ -35,6 +35,9 @@ import {
   calculateSpreadZScore,
   generateSignal,
 } from "@/lib/cointegration";
+
+// Import Kalman filter
+import { useKalmanHedge, analyzeBetaStability } from "@/hooks/useKalmanHedge";
 
 const timeRanges = [
   { label: "30D", days: 30 },
@@ -251,6 +254,29 @@ export default function ComparePage() {
     };
   }, [alignedData, spreadType]);
 
+  // Extract price arrays for Kalman filter
+  const priceArrays = useMemo(() => {
+    if (!alignedData || alignedData.length < 30) return null;
+    return {
+      p1: alignedData.map(d => d.price1),
+      p2: alignedData.map(d => d.price2),
+    };
+  }, [alignedData]);
+
+  // Run Kalman filter for dynamic hedge ratio
+  const kalmanResult = useKalmanHedge(
+    priceArrays?.p1 ?? null,
+    priceArrays?.p2 ?? null,
+    analysis?.hedgeRatio ?? 1,
+    analysis?.intercept ?? 0
+  );
+
+  // Analyze beta stability
+  const betaStability = useMemo(() => {
+    if (!kalmanResult.betaHistory.length) return null;
+    return analyzeBetaStability(kalmanResult.betaHistory);
+  }, [kalmanResult.betaHistory]);
+
   // Chart data
   const performanceData = useMemo(() => {
     if (!analysis) return [];
@@ -285,6 +311,16 @@ export default function ComparePage() {
       correlation: analysis.correlation[i],
     }));
   }, [analysis]);
+
+  // Kalman beta history chart data
+  const kalmanBetaData = useMemo(() => {
+    if (!analysis || !kalmanResult.betaHistory.length) return [];
+    return analysis.timestamps.map((ts, i) => ({
+      time: ts,
+      staticBeta: analysis.hedgeRatio,
+      dynamicBeta: kalmanResult.betaHistory[i] ?? null,
+    }));
+  }, [analysis, kalmanResult.betaHistory]);
 
   return (
     <div className="space-y-6">
@@ -630,6 +666,148 @@ export default function ComparePage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Kalman Filter Section */}
+      {analysis && kalmanResult.kalmanResult && (
+        <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Zap className="w-5 h-5 text-yellow-500" />
+            <h3 className="font-semibold text-crypto-text text-lg">Dynamic Hedge Ratio (Kalman Filter)</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Static vs Dynamic Beta */}
+            <div className="rounded-lg border bg-crypto-bg border-crypto-border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-4 h-4 text-crypto-muted" />
+                <span className="text-sm font-medium text-crypto-text">Static β (OLS)</span>
+              </div>
+              <p className="text-xl font-bold font-mono text-crypto-text">
+                {analysis.hedgeRatio.toFixed(4)}
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">Fixed over time</p>
+            </div>
+
+            <div className="rounded-lg border bg-yellow-500/10 border-yellow-500/30 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="w-4 h-4 text-yellow-500" />
+                <span className="text-sm font-medium text-crypto-text">Dynamic β (Kalman)</span>
+              </div>
+              <p className="text-xl font-bold font-mono text-yellow-500">
+                {kalmanResult.dynamicBeta.toFixed(4)}
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">
+                {betaStability?.trend === "increasing" ? "↑ Increasing" :
+                 betaStability?.trend === "decreasing" ? "↓ Decreasing" : "→ Stable"}
+              </p>
+            </div>
+
+            {/* Variance Reduction */}
+            <div className={cn(
+              "rounded-lg border p-4",
+              kalmanResult.comparison?.kalmanIsBetter
+                ? "bg-green-500/10 border-green-500/30"
+                : "bg-crypto-bg border-crypto-border"
+            )}>
+              <div className="flex items-center gap-2 mb-2">
+                <Target className="w-4 h-4 text-crypto-muted" />
+                <span className="text-sm font-medium text-crypto-text">Variance Reduction</span>
+              </div>
+              <p className={cn(
+                "text-xl font-bold font-mono",
+                (kalmanResult.comparison?.varianceReduction ?? 0) > 0 ? "text-green-500" : "text-crypto-text"
+              )}>
+                {kalmanResult.comparison?.varianceReduction.toFixed(1) ?? "—"}%
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">
+                {(kalmanResult.comparison?.varianceReduction ?? 0) > 5 ? "Kalman better" : "Similar"}
+              </p>
+            </div>
+
+            {/* Beta Stability */}
+            <div className={cn(
+              "rounded-lg border p-4",
+              betaStability?.isStable
+                ? "bg-green-500/10 border-green-500/30"
+                : "bg-yellow-500/10 border-yellow-500/30"
+            )}>
+              <div className="flex items-center gap-2 mb-2">
+                <GitMerge className="w-4 h-4 text-crypto-muted" />
+                <span className="text-sm font-medium text-crypto-text">β Stability</span>
+              </div>
+              <p className={cn(
+                "text-xl font-bold font-mono",
+                betaStability?.isStable ? "text-green-500" : "text-yellow-500"
+              )}>
+                {betaStability?.isStable ? "Stable" : "Volatile"}
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">
+                CV: {((betaStability?.cv ?? 0) * 100).toFixed(1)}%
+              </p>
+            </div>
+          </div>
+
+          {/* Beta History Chart */}
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={kalmanBetaData}>
+                <XAxis
+                  dataKey="time"
+                  tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (active && payload?.length && label) {
+                      return (
+                        <div className="bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 shadow-lg">
+                          <p className="text-crypto-muted text-xs mb-1">
+                            {format(new Date(label as number), "MMM d, yyyy")}
+                          </p>
+                          <p className="text-sm text-crypto-muted">
+                            Static β: {Number(payload[0]?.value).toFixed(4)}
+                          </p>
+                          <p className="text-sm text-yellow-500">
+                            Dynamic β: {Number(payload[1]?.value).toFixed(4)}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="staticBeta"
+                  stroke="#64748b"
+                  strokeWidth={1}
+                  strokeDasharray="5 5"
+                  dot={false}
+                  name="Static β"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="dynamicBeta"
+                  stroke="#eab308"
+                  strokeWidth={2}
+                  dot={false}
+                  name="Dynamic β"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <p className="text-xs text-crypto-muted mt-2">
+            Kalman filter adaptively updates the hedge ratio as market conditions change.
+            {kalmanResult.comparison?.kalmanIsBetter
+              ? " The dynamic approach shows improvement over static OLS."
+              : " Static and dynamic approaches show similar performance."}
+          </p>
         </div>
       )}
 
