@@ -78,10 +78,11 @@ src/
 - [x] Engle-Granger completo (`src/lib/cointegration/engle-granger.ts`)
 - [x] Half-life via AR(1)/OU (`src/lib/cointegration/half-life.ts`)
 
-### Fase 2: Scanner de Pares
-- [ ] Hook `usePairScanner`
-- [ ] UI `/scanner` con tabla de resultados
-- [ ] Filtros: correlación, p-value, half-life
+### Fase 2: Scanner de Pares ✅ COMPLETADA
+- [x] Hook `usePairScanner` (`src/hooks/usePairScanner.ts`)
+- [x] UI `/scanner` con tabla de resultados (`src/app/scanner/page.tsx`)
+- [x] Filtros: correlación, p-value, half-life, señales
+- [x] Link en navegación lateral
 
 ### Fase 3: Kalman Filter
 - [ ] Clase `KalmanFilter`
