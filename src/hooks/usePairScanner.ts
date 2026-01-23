@@ -5,8 +5,7 @@
  * Runs Engle-Granger tests on all combinations and ranks by composite score.
  */
 
-import { useQuery, useQueries } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { getCryptoCompareSymbol } from "./useCryptoCompareData";
 import {
   engleGrangerTest,
@@ -27,25 +26,44 @@ const DEFAULT_CONFIG: ScannerConfig = {
   lookbackDays: 90,
 };
 
+// Rate limiting: delay between API calls (ms)
+const API_DELAY_MS = 200;
+
 /**
- * Fetch historical price data for a symbol
+ * Fetch historical price data for a symbol with retry
  */
 async function fetchPriceHistory(symbol: string, days: number): Promise<number[]> {
-  const response = await fetch(
-    `${CRYPTOCOMPARE_API}/histoday?fsym=${symbol}&tsym=USD&limit=${days}`
-  );
+  const maxRetries = 3;
 
-  if (!response.ok) {
-    throw new Error(`CryptoCompare API error: ${response.status}`);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(
+        `${CRYPTOCOMPARE_API}/histoday?fsym=${symbol}&tsym=USD&limit=${days}`
+      );
+
+      if (!response.ok) {
+        if (response.status === 429 && attempt < maxRetries - 1) {
+          // Rate limited - wait and retry
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`CryptoCompare API error: ${response.status}`);
+      }
+
+      const json = await response.json();
+
+      if (json.Response !== "Success") {
+        throw new Error(json.Message || "Failed to fetch data");
+      }
+
+      return json.Data.Data.map((item: { close: number }) => item.close);
+    } catch (error) {
+      if (attempt === maxRetries - 1) throw error;
+      await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+    }
   }
 
-  const json = await response.json();
-
-  if (json.Response !== "Success") {
-    throw new Error(json.Message || "Failed to fetch data");
-  }
-
-  return json.Data.Data.map((item: { close: number }) => item.close);
+  throw new Error("Max retries exceeded");
 }
 
 /**
@@ -158,6 +176,7 @@ function analyzePair(
 
 /**
  * Hook to scan multiple pairs for cointegration
+ * Uses sequential fetching with delays to avoid rate limiting
  */
 export function usePairScanner(
   coinIds: string[],
@@ -175,67 +194,98 @@ export function usePairScanner(
       .filter(item => item.symbol !== null) as { id: string; symbol: string }[];
   }, [coinIds]);
 
-  // Fetch price data for all coins in parallel
-  const priceQueries = useQueries({
-    queries: coinSymbols.map(({ id, symbol }) => ({
-      queryKey: ["scannerPrices", id, scannerConfig.lookbackDays],
-      queryFn: () => fetchPriceHistory(symbol, scannerConfig.lookbackDays),
-      staleTime: 60 * 60 * 1000, // 1 hour
-      gcTime: 2 * 60 * 60 * 1000, // 2 hours
-      retry: 2,
-    })),
-  });
+  // State for sequential loading
+  const [priceData, setPriceData] = useState<Map<string, number[]>>(new Map());
+  const [loadedCount, setLoadedCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Combine all data and run analysis
-  const scanResults = useMemo(() => {
-    // Check if all queries are done
-    const allLoaded = priceQueries.every(q => q.isSuccess);
-    const anyLoading = priceQueries.some(q => q.isLoading);
-    const anyError = priceQueries.some(q => q.isError);
-
-    if (!allLoaded || anyLoading) {
-      return {
-        isLoading: true,
-        isError: false,
-        data: null,
-        progress: {
-          loaded: priceQueries.filter(q => q.isSuccess).length,
-          total: priceQueries.length,
-        },
-      };
+  // Sequential fetch effect
+  useEffect(() => {
+    if (coinSymbols.length === 0) {
+      setIsLoading(false);
+      return;
     }
 
-    if (anyError) {
-      return {
-        isLoading: false,
-        isError: true,
-        data: null,
-        progress: {
-          loaded: priceQueries.filter(q => q.isSuccess).length,
-          total: priceQueries.length,
-        },
-      };
+    // Abort previous fetch if params change
+    if (abortRef.current) {
+      abortRef.current.abort();
     }
+    abortRef.current = new AbortController();
 
-    // Build price map
-    const priceMap = new Map<string, number[]>();
-    coinSymbols.forEach((coin, idx) => {
-      const data = priceQueries[idx].data;
-      if (data && data.length >= 30) {
-        priceMap.set(coin.id, data);
+    const fetchAllPrices = async () => {
+      setIsLoading(true);
+      setHasError(false);
+      setPriceData(new Map());
+      setLoadedCount(0);
+
+      const newPriceData = new Map<string, number[]>();
+
+      for (let i = 0; i < coinSymbols.length; i++) {
+        // Check if aborted
+        if (abortRef.current?.signal.aborted) return;
+
+        const { id, symbol } = coinSymbols[i];
+
+        try {
+          const prices = await fetchPriceHistory(symbol, scannerConfig.lookbackDays);
+
+          if (abortRef.current?.signal.aborted) return;
+
+          if (prices && prices.length >= 30) {
+            newPriceData.set(id, prices);
+            setPriceData(new Map(newPriceData));
+          }
+          setLoadedCount(i + 1);
+
+          // Delay before next request to avoid rate limiting
+          if (i < coinSymbols.length - 1) {
+            await new Promise(r => setTimeout(r, API_DELAY_MS));
+          }
+        } catch (error) {
+          console.warn(`Error fetching ${symbol}:`, error);
+          setLoadedCount(i + 1);
+          // Continue with other coins
+        }
       }
-    });
+
+      if (!abortRef.current?.signal.aborted) {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAllPrices();
+
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [coinSymbols, scannerConfig.lookbackDays]);
+
+  // Analyze pairs whenever priceData changes (progressive results)
+  const scanResults = useMemo(() => {
+    if (priceData.size < 2) {
+      return {
+        isLoading,
+        isError: hasError,
+        data: null,
+        progress: {
+          loaded: loadedCount,
+          total: coinSymbols.length,
+        },
+      };
+    }
 
     // Generate all pairs and analyze
     const results: PairScanResult[] = [];
-    const coinsWithData = Array.from(priceMap.keys());
+    const coinsWithData = Array.from(priceData.keys());
 
     for (let i = 0; i < coinsWithData.length; i++) {
       for (let j = i + 1; j < coinsWithData.length; j++) {
         const id1 = coinsWithData[i];
         const id2 = coinsWithData[j];
-        const prices1 = priceMap.get(id1)!;
-        const prices2 = priceMap.get(id2)!;
+        const prices1 = priceData.get(id1)!;
+        const prices2 = priceData.get(id2)!;
 
         const symbol1 = coinSymbols.find(c => c.id === id1)?.symbol || id1;
         const symbol2 = coinSymbols.find(c => c.id === id2)?.symbol || id2;
@@ -253,15 +303,15 @@ export function usePairScanner(
     results.sort((a, b) => b.score - a.score);
 
     return {
-      isLoading: false,
-      isError: false,
+      isLoading,
+      isError: hasError,
       data: results,
       progress: {
-        loaded: priceQueries.length,
-        total: priceQueries.length,
+        loaded: loadedCount,
+        total: coinSymbols.length,
       },
     };
-  }, [priceQueries, coinSymbols]);
+  }, [priceData, coinSymbols, isLoading, hasError, loadedCount]);
 
   // Filter results based on config
   const filteredResults = useMemo(() => {

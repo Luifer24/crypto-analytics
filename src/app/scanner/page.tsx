@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useCryptoList } from "@/hooks/useCryptoData";
-import { usePairScanner, getScanSummary } from "@/hooks/usePairScanner";
-import { isCryptoCompareSupported } from "@/hooks/useCryptoCompareData";
+import { useLocalPairScanner, getLocalScanSummary } from "@/hooks/useLocalPairScanner";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -35,13 +33,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { PairScanResult, Signal } from "@/types/arbitrage";
-
-// Number of top coins to scan
-const SCAN_OPTIONS = [
-  { label: "Top 10", value: 10 },
-  { label: "Top 20", value: 20 },
-  { label: "Top 30", value: 30 },
-];
 
 const LOOKBACK_OPTIONS = [
   { label: "30 Days", value: 30 },
@@ -84,32 +75,19 @@ function CointegrationBadge({ isCointegrated, pValue }: { isCointegrated: boolea
 }
 
 export default function ScannerPage() {
-  const [topN, setTopN] = useState(20);
   const [lookbackDays, setLookbackDays] = useState(90);
   const [showOnlyCointegrated, setShowOnlyCointegrated] = useState(false);
   const [showOnlySignals, setShowOnlySignals] = useState(false);
   const [sortBy, setSortBy] = useState<"score" | "pValue" | "halfLife" | "zScore">("score");
 
-  // Get top cryptos
-  const { data: cryptoList, isLoading: listLoading } = useCryptoList(50);
-
-  // Filter supported cryptos and take top N
-  const coinIds = useMemo(() => {
-    if (!cryptoList) return [];
-    return cryptoList
-      .filter(c => isCryptoCompareSupported(c.id))
-      .slice(0, topN)
-      .map(c => c.id);
-  }, [cryptoList, topN]);
-
-  // Run the scanner
+  // Run the local scanner (uses data from JSON files)
   const {
-    isLoading: scanLoading,
+    isLoading,
     isError,
     progress,
     allResults,
     filteredResults,
-  } = usePairScanner(coinIds, {
+  } = useLocalPairScanner({
     lookbackDays,
     minCorrelation: 0.3,
     maxPValue: 0.15,
@@ -149,9 +127,7 @@ export default function ScannerPage() {
   }, [allResults, showOnlyCointegrated, showOnlySignals, sortBy]);
 
   // Summary stats
-  const summary = getScanSummary(allResults);
-
-  const isLoading = listLoading || scanLoading;
+  const summary = getLocalScanSummary(allResults);
 
   return (
     <div className="space-y-6">
@@ -168,20 +144,6 @@ export default function ScannerPage() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Top N selector */}
-          <Select value={String(topN)} onValueChange={(v) => setTopN(Number(v))}>
-            <SelectTrigger className="w-32 bg-crypto-bg border-crypto-border text-crypto-text">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-crypto-card border-crypto-border">
-              {SCAN_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={String(opt.value)} className="text-crypto-text">
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
           {/* Lookback selector */}
           <Select value={String(lookbackDays)} onValueChange={(v) => setLookbackDays(Number(v))}>
             <SelectTrigger className="w-32 bg-crypto-bg border-crypto-border text-crypto-text">
@@ -195,22 +157,35 @@ export default function ScannerPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Local data indicator */}
+          <span className="text-xs text-crypto-muted bg-crypto-bg px-2 py-1 rounded">
+            Local Data
+          </span>
         </div>
       </div>
 
-      {/* Loading State */}
+      {/* Loading State - Shows even while displaying partial results */}
       {isLoading && (
-        <div className="bg-crypto-card rounded-lg border border-crypto-border p-8 text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-crypto-accent mx-auto mb-4" />
-          <p className="text-crypto-text font-medium">Scanning pairs...</p>
-          <p className="text-crypto-muted text-sm mt-1">
-            Loading {progress.loaded}/{progress.total} coins
-          </p>
-          <div className="w-48 h-2 bg-crypto-bg rounded-full mx-auto mt-4 overflow-hidden">
-            <div
-              className="h-full bg-crypto-accent transition-all duration-300"
-              style={{ width: `${(progress.loaded / progress.total) * 100}%` }}
-            />
+        <div className="bg-crypto-card rounded-lg border border-crypto-border p-4">
+          <div className="flex items-center gap-4">
+            <Loader2 className="w-6 h-6 animate-spin text-crypto-accent" />
+            <div className="flex-1">
+              <p className="text-crypto-text font-medium">
+                {progress.loaded === 0 ? "Loading local data..." : `Loading symbols... ${progress.loaded}/${progress.total}`}
+              </p>
+              <p className="text-crypto-muted text-sm">
+                {allResults && allResults.length > 0
+                  ? `Analyzing ${allResults.length} pairs...`
+                  : "Reading price data from local database..."}
+              </p>
+            </div>
+            <div className="w-32 h-2 bg-crypto-bg rounded-full overflow-hidden">
+              <div
+                className="h-full bg-crypto-accent transition-all duration-300"
+                style={{ width: `${progress.total > 0 ? (progress.loaded / progress.total) * 100 : 0}%` }}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -219,12 +194,15 @@ export default function ScannerPage() {
       {isError && !isLoading && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
           <XCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-          <p className="text-red-500">Error loading data. Please try again.</p>
+          <p className="text-red-500 mb-2">Local data not found.</p>
+          <p className="text-crypto-muted text-sm">
+            Run <code className="bg-crypto-bg px-2 py-1 rounded">npm run db:update</code> to fetch and export price data.
+          </p>
         </div>
       )}
 
-      {/* Results */}
-      {!isLoading && !isError && allResults && (
+      {/* Results - Show partial results even while loading */}
+      {!isError && allResults && allResults.length > 0 && (
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">

@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local database and exported data
+/data/*.duckdb
+/data/*.duckdb.wal
+/public/data/
