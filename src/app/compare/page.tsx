@@ -24,7 +24,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Image from "next/image";
-import { TrendingUp, TrendingDown, Activity, GitMerge, Target, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, GitMerge, Target, AlertTriangle, FlaskConical, Clock, CheckCircle2, XCircle } from "lucide-react";
+
+// Import cointegration tests
+import {
+  adfTest,
+  engleGrangerTest,
+  calculateHalfLife,
+  assessTradingFrequency,
+  calculateSpreadZScore,
+  generateSignal,
+} from "@/lib/cointegration";
 
 const timeRanges = [
   { label: "30D", days: 30 },
@@ -154,62 +164,90 @@ export default function ComparePage() {
     const norm1 = p1.map(p => (p / p1[0]) * 100);
     const norm2 = p2.map(p => (p / p2[0]) * 100);
 
-    // Calculate spread (ratio or difference)
-    const spread = spreadType === "ratio"
+    // ============================================================
+    // FORMAL COINTEGRATION TESTS
+    // ============================================================
+
+    // Run ADF tests on both price series
+    const adf1 = adfTest(p1, { regression: "c", autolag: "aic" });
+    const adf2 = adfTest(p2, { regression: "c", autolag: "aic" });
+
+    // Run Engle-Granger cointegration test
+    const egTest = engleGrangerTest(p1, p2);
+
+    // Calculate half-life from the cointegrating residuals (spread)
+    const halfLifeResult = calculateHalfLife(egTest.residuals);
+    const tradingFrequency = assessTradingFrequency(halfLifeResult.halfLife);
+
+    // Use formal hedge ratio from Engle-Granger
+    const formalHedgeRatio = egTest.hedgeRatio;
+    const formalIntercept = egTest.intercept;
+
+    // The residuals from EG test ARE the stationary spread
+    const formalSpread = egTest.residuals;
+
+    // Calculate Z-Score using formal method
+    const zScoreResult = calculateSpreadZScore(formalSpread, 20);
+
+    // ============================================================
+    // ROLLING CALCULATIONS (for charts)
+    // ============================================================
+
+    // Calculate spread (ratio or difference) for visualization
+    const displaySpread = spreadType === "ratio"
       ? p1.map((_, i) => p1[i] / p2[i])
       : norm1.map((_, i) => norm1[i] - norm2[i]);
 
-    // Calculate Z-Score of spread
-    const zScore = calculateZScore(spread, 20);
+    // Calculate Z-Score of display spread (for backward compatibility)
+    const displayZScore = calculateZScore(displaySpread, 20);
 
     // Calculate rolling correlation
     const returns1 = calculateReturns(p1);
     const returns2 = calculateReturns(p2);
     const correlation = rollingCorrelation(returns1, returns2, 20);
 
-    // Calculate hedge ratio
-    const hedgeRatio = calculateHedgeRatio(returns1, returns2);
+    // Legacy hedge ratio (from returns)
+    const legacyHedgeRatio = calculateHedgeRatio(returns1, returns2);
 
     // Current values
-    const currentZScore = zScore[zScore.length - 1];
+    const currentZScore = zScoreResult.currentZScore;
     const currentCorrelation = correlation[correlation.length - 1];
-    const currentSpread = spread[spread.length - 1];
-    const meanSpread = spread.filter(s => !isNaN(s)).reduce((a, b) => a + b, 0) / spread.filter(s => !isNaN(s)).length;
+    const currentSpread = displaySpread[displaySpread.length - 1];
+    const meanSpread = displaySpread.filter(s => !isNaN(s)).reduce((a, b) => a + b, 0) / displaySpread.filter(s => !isNaN(s)).length;
 
-    // Generate signal
-    let signal: "long_1_short_2" | "short_1_long_2" | "neutral" = "neutral";
-    let signalStrength: "strong" | "moderate" | "weak" = "weak";
-
-    if (!isNaN(currentZScore)) {
-      if (currentZScore > 2) {
-        signal = "short_1_long_2";
-        signalStrength = "strong";
-      } else if (currentZScore > 1.5) {
-        signal = "short_1_long_2";
-        signalStrength = "moderate";
-      } else if (currentZScore < -2) {
-        signal = "long_1_short_2";
-        signalStrength = "strong";
-      } else if (currentZScore < -1.5) {
-        signal = "long_1_short_2";
-        signalStrength = "moderate";
-      }
-    }
+    // Generate signal using formal method
+    const signalResult = generateSignal(currentZScore, 2, 0);
+    const signal: "long_1_short_2" | "short_1_long_2" | "neutral" =
+      signalResult.signal === "long_a_short_b" ? "long_1_short_2" :
+      signalResult.signal === "short_a_long_b" ? "short_1_long_2" : "neutral";
 
     return {
       timestamps: alignedData.map(d => d.timestamp),
       norm1,
       norm2,
-      spread,
-      zScore,
+      spread: displaySpread,
+      zScore: displayZScore,
+      formalZScore: zScoreResult.zScore,
       correlation: [NaN, ...correlation], // Offset by 1 for returns
-      hedgeRatio,
+      hedgeRatio: formalHedgeRatio, // Use formal hedge ratio
+      legacyHedgeRatio,
+      intercept: formalIntercept,
       currentZScore,
       currentCorrelation,
       currentSpread,
       meanSpread,
       signal,
-      signalStrength,
+      signalStrength: signalResult.strength,
+      // Cointegration test results
+      cointegration: {
+        adf1,
+        adf2,
+        egTest,
+        halfLife: halfLifeResult,
+        tradingFrequency,
+        isCointegrated: egTest.isCointegrated,
+        pValue: egTest.pValue,
+      },
     };
   }, [alignedData, spreadType]);
 
@@ -454,6 +492,146 @@ export default function ComparePage() {
           </p>
         </div>
       </div>
+
+      {/* Statistical Tests Section */}
+      {analysis?.cointegration && (
+        <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <FlaskConical className="w-5 h-5 text-crypto-accent" />
+            <h3 className="font-semibold text-crypto-text text-lg">Statistical Tests (Formal)</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Cointegration Test Result */}
+            <div className={cn(
+              "rounded-lg border p-4",
+              analysis.cointegration.isCointegrated
+                ? "bg-green-500/10 border-green-500/30"
+                : "bg-red-500/10 border-red-500/30"
+            )}>
+              <div className="flex items-center gap-2 mb-2">
+                {analysis.cointegration.isCointegrated ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-500" />
+                )}
+                <span className="text-sm font-medium text-crypto-text">Cointegration</span>
+              </div>
+              <p className={cn(
+                "text-xl font-bold font-mono",
+                analysis.cointegration.isCointegrated ? "text-green-500" : "text-red-500"
+              )}>
+                {analysis.cointegration.isCointegrated ? "YES" : "NO"}
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">
+                p-value: {analysis.cointegration.pValue.toFixed(4)}
+              </p>
+              <p className="text-xs text-crypto-muted">
+                ADF: {analysis.cointegration.egTest.statistic.toFixed(3)}
+              </p>
+            </div>
+
+            {/* Half-Life */}
+            <div className={cn(
+              "rounded-lg border p-4",
+              analysis.cointegration.halfLife.isTradeable
+                ? "bg-green-500/10 border-green-500/30"
+                : "bg-yellow-500/10 border-yellow-500/30"
+            )}>
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4 text-crypto-accent" />
+                <span className="text-sm font-medium text-crypto-text">Half-Life</span>
+              </div>
+              <p className="text-xl font-bold font-mono text-crypto-text">
+                {isFinite(analysis.cointegration.halfLife.halfLife)
+                  ? `${analysis.cointegration.halfLife.halfLife.toFixed(1)} days`
+                  : "∞"}
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">
+                {analysis.cointegration.tradingFrequency.frequency.replace("_", " ")}
+              </p>
+              <p className="text-xs text-crypto-muted">
+                θ: {analysis.cointegration.halfLife.theta.toFixed(4)}
+              </p>
+            </div>
+
+            {/* ADF Test Asset 1 */}
+            <div className={cn(
+              "rounded-lg border p-4",
+              !analysis.cointegration.adf1.isStationary
+                ? "bg-crypto-bg border-crypto-border"
+                : "bg-yellow-500/10 border-yellow-500/30"
+            )}>
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-4 h-4 text-crypto-muted" />
+                <span className="text-sm font-medium text-crypto-text">
+                  ADF {crypto1?.symbol.toUpperCase()}
+                </span>
+              </div>
+              <p className={cn(
+                "text-xl font-bold font-mono",
+                !analysis.cointegration.adf1.isStationary ? "text-crypto-text" : "text-yellow-500"
+              )}>
+                {!analysis.cointegration.adf1.isStationary ? "I(1)" : "I(0)"}
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">
+                p-value: {analysis.cointegration.adf1.pValue.toFixed(4)}
+              </p>
+              <p className="text-xs text-crypto-muted">
+                stat: {analysis.cointegration.adf1.statistic.toFixed(3)}
+              </p>
+            </div>
+
+            {/* ADF Test Asset 2 */}
+            <div className={cn(
+              "rounded-lg border p-4",
+              !analysis.cointegration.adf2.isStationary
+                ? "bg-crypto-bg border-crypto-border"
+                : "bg-yellow-500/10 border-yellow-500/30"
+            )}>
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-4 h-4 text-crypto-muted" />
+                <span className="text-sm font-medium text-crypto-text">
+                  ADF {crypto2?.symbol.toUpperCase()}
+                </span>
+              </div>
+              <p className={cn(
+                "text-xl font-bold font-mono",
+                !analysis.cointegration.adf2.isStationary ? "text-crypto-text" : "text-yellow-500"
+              )}>
+                {!analysis.cointegration.adf2.isStationary ? "I(1)" : "I(0)"}
+              </p>
+              <p className="text-xs text-crypto-muted mt-1">
+                p-value: {analysis.cointegration.adf2.pValue.toFixed(4)}
+              </p>
+              <p className="text-xs text-crypto-muted">
+                stat: {analysis.cointegration.adf2.statistic.toFixed(3)}
+              </p>
+            </div>
+          </div>
+
+          {/* Trading Frequency Recommendation */}
+          <div className="mt-4 p-3 bg-crypto-bg rounded-lg border border-crypto-border">
+            <p className="text-sm text-crypto-muted">
+              <span className="font-medium text-crypto-text">Trading Assessment:</span>{" "}
+              {analysis.cointegration.tradingFrequency.description}.{" "}
+              {analysis.cointegration.tradingFrequency.recommendation}
+            </p>
+          </div>
+
+          {/* Critical Values Reference */}
+          {analysis.cointegration.egTest.criticalValues && (
+            <div className="mt-4 text-xs text-crypto-muted">
+              <p className="font-medium text-crypto-text mb-1">Critical Values (Engle-Granger):</p>
+              <p>
+                1%: {analysis.cointegration.egTest.criticalValues["1%"]} |
+                5%: {analysis.cointegration.egTest.criticalValues["5%"]} |
+                10%: {analysis.cointegration.egTest.criticalValues["10%"]}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Performance Comparison */}
       <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
