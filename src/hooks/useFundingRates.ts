@@ -78,25 +78,22 @@ export function useFundingRates(
             if (history.length === 0) continue;
 
             // Calculate stats
-            const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
-            const recentHistory = history.filter(h => h.fundingTime >= cutoffTime);
+            // Use the last N entries instead of time-based filtering
+            // to handle historical data that may be older than the cutoff
+            const recentHistory = history.slice(-Math.min(daysBack * 3, history.length));
 
             if (recentHistory.length === 0) continue;
 
             // Current rate (most recent)
             const currentRate = recentHistory[recentHistory.length - 1].fundingRate;
 
-            // Average rates
-            const last7days = history.filter(
-              h => h.fundingTime >= Date.now() - 7 * 24 * 60 * 60 * 1000
-            );
+            // Average rates (use last N entries instead of time-based)
+            const last7days = history.slice(-Math.min(7 * 3, history.length)); // 7 days × 3 periods
             const avg7d =
               last7days.reduce((sum, h) => sum + h.fundingRate, 0) /
               last7days.length;
 
-            const last30days = history.filter(
-              h => h.fundingTime >= Date.now() - 30 * 24 * 60 * 60 * 1000
-            );
+            const last30days = history.slice(-Math.min(30 * 3, history.length)); // 30 days × 3 periods
             const avg30d =
               last30days.reduce((sum, h) => sum + h.fundingRate, 0) /
               last30days.length;
