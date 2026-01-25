@@ -13,7 +13,16 @@
     "db:fetch:year": "tsx data/scripts/fetch-cryptocompare.ts --days=365",
     "db:export": "tsx data/scripts/export-json.ts",
     "db:stats": "tsx data/scripts/db-stats.ts",
-    "db:update": "npm run db:fetch:quick && npm run db:export"
+    "db:update": "npm run db:fetch:quick && npm run db:export",
+    "db:futures": "tsx data/scripts/fetch-binance-futures.ts",
+    "db:futures:5m": "tsx data/scripts/fetch-binance-futures.ts --interval=5m --days=365",
+    "db:futures:15m": "tsx data/scripts/fetch-binance-futures.ts --interval=15m --days=90",
+    "db:futures:4h": "tsx data/scripts/fetch-binance-futures.ts --interval=4h --days=90",
+    "db:futures:1d": "tsx data/scripts/fetch-binance-futures.ts --interval=1d --days=365",
+    "db:futures:all": "tsx data/scripts/fetch-binance-futures.ts --interval=15m --all",
+    "db:futures:all-5m": "tsx data/scripts/fetch-binance-futures.ts --interval=5m --all",
+    "db:futures:export": "tsx data/scripts/export-futures-json.ts",
+    "db:futures:update": "npm run db:futures:all && npm run db:futures:export"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",

@@ -14,6 +14,7 @@ import {
   Link2,
   PieChart,
   Search,
+  LineChart,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { icon: Gauge, label: "Signals", path: "/signals" },
   { icon: ArrowLeftRight, label: "Compare", path: "/compare" },
   { icon: Search, label: "Scanner", path: "/scanner" },
+  { icon: LineChart, label: "Backtest", path: "/backtest" },
   { icon: Star, label: "Watchlist", path: "/watchlist" },
   { icon: FlaskConical, label: "Analysis", path: "/analysis" },
   { icon: Globe, label: "Macro", path: "/macro" },

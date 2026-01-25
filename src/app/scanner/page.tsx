@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useLocalPairScanner, getLocalScanSummary } from "@/hooks/useLocalPairScanner";
+import { useFuturesPairScanner, getFuturesScanSummary, type FuturesPairScanResult } from "@/hooks/useFuturesPairScanner";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -30,15 +31,27 @@ import {
   Filter,
   BarChart3,
   Target,
+  Wallet,
+  LineChart,
 } from "lucide-react";
 import Link from "next/link";
 import type { PairScanResult, Signal } from "@/types/arbitrage";
+
+type DataSource = "spot" | "futures";
 
 const LOOKBACK_OPTIONS = [
   { label: "30 Days", value: 30 },
   { label: "60 Days", value: 60 },
   { label: "90 Days", value: 90 },
   { label: "180 Days", value: 180 },
+];
+
+const INTERVAL_OPTIONS = [
+  { label: "5 min", value: "5m" },
+  { label: "15 min", value: "15m" },
+  { label: "1 hour", value: "1h" },
+  { label: "4 hours", value: "4h" },
+  { label: "1 day", value: "1d" },
 ];
 
 function SignalBadge({ signal, strength }: { signal: Signal; strength: string }) {
@@ -74,20 +87,28 @@ function CointegrationBadge({ isCointegrated, pValue }: { isCointegrated: boolea
   );
 }
 
+function FundingBadge({ rate }: { rate: number }) {
+  const isPositive = rate > 0;
+  return (
+    <span className={cn(
+      "font-mono text-xs",
+      isPositive ? "text-green-500" : "text-red-500"
+    )}>
+      {isPositive ? "+" : ""}{rate.toFixed(1)}%
+    </span>
+  );
+}
+
 export default function ScannerPage() {
+  const [dataSource, setDataSource] = useState<DataSource>("futures");
   const [lookbackDays, setLookbackDays] = useState(90);
+  const [interval, setInterval] = useState<"5m" | "15m" | "1h" | "4h" | "1d">("15m");
   const [showOnlyCointegrated, setShowOnlyCointegrated] = useState(false);
   const [showOnlySignals, setShowOnlySignals] = useState(false);
-  const [sortBy, setSortBy] = useState<"score" | "pValue" | "halfLife" | "zScore">("score");
+  const [sortBy, setSortBy] = useState<"score" | "pValue" | "halfLife" | "zScore" | "funding">("score");
 
-  // Run the local scanner (uses data from JSON files)
-  const {
-    isLoading,
-    isError,
-    progress,
-    allResults,
-    filteredResults,
-  } = useLocalPairScanner({
+  // Run the appropriate scanner
+  const spotScanner = useLocalPairScanner({
     lookbackDays,
     minCorrelation: 0.3,
     maxPValue: 0.15,
@@ -95,9 +116,23 @@ export default function ScannerPage() {
     maxHalfLife: 150,
   });
 
+  const futuresScanner = useFuturesPairScanner({
+    lookbackDays,
+    interval,
+    minCorrelation: 0.3,
+    maxPValue: 0.15,
+    minHalfLife: 1,
+    maxHalfLife: 150,
+    includeFunding: true,
+  });
+
+  // Select active scanner
+  const scanner = dataSource === "futures" ? futuresScanner : spotScanner;
+  const allResults = scanner.allResults;
+
   // Apply UI filters and sorting
   const displayResults = useMemo(() => {
-    let results = allResults || [];
+    let results = (allResults || []) as (PairScanResult | FuturesPairScanResult)[];
 
     if (showOnlyCointegrated) {
       results = results.filter(r => r.isCointegrated);
@@ -118,16 +153,25 @@ export default function ScannerPage() {
           return a.halfLife - b.halfLife;
         case "zScore":
           return Math.abs(b.currentZScore) - Math.abs(a.currentZScore);
+        case "funding":
+          if (dataSource === "futures") {
+            const aFunding = (a as FuturesPairScanResult).fundingArbScore || 0;
+            const bFunding = (b as FuturesPairScanResult).fundingArbScore || 0;
+            return bFunding - aFunding;
+          }
+          return b.score - a.score;
         default:
           return b.score - a.score;
       }
     });
 
     return results;
-  }, [allResults, showOnlyCointegrated, showOnlySignals, sortBy]);
+  }, [allResults, showOnlyCointegrated, showOnlySignals, sortBy, dataSource]);
 
   // Summary stats
-  const summary = getLocalScanSummary(allResults);
+  const summary = dataSource === "futures"
+    ? getFuturesScanSummary(allResults as FuturesPairScanResult[] | null)
+    : getLocalScanSummary(allResults);
 
   return (
     <div className="space-y-6">
@@ -144,6 +188,50 @@ export default function ScannerPage() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Data source toggle */}
+          <div className="flex rounded-lg border border-crypto-border overflow-hidden">
+            <button
+              onClick={() => setDataSource("spot")}
+              className={cn(
+                "px-3 py-1.5 text-sm flex items-center gap-1.5 transition-colors",
+                dataSource === "spot"
+                  ? "bg-crypto-accent text-white"
+                  : "bg-crypto-bg text-crypto-muted hover:text-crypto-text"
+              )}
+            >
+              <LineChart className="w-4 h-4" />
+              Spot
+            </button>
+            <button
+              onClick={() => setDataSource("futures")}
+              className={cn(
+                "px-3 py-1.5 text-sm flex items-center gap-1.5 transition-colors",
+                dataSource === "futures"
+                  ? "bg-crypto-accent text-white"
+                  : "bg-crypto-bg text-crypto-muted hover:text-crypto-text"
+              )}
+            >
+              <Wallet className="w-4 h-4" />
+              Futures
+            </button>
+          </div>
+
+          {/* Interval selector (futures only) */}
+          {dataSource === "futures" && (
+            <Select value={interval} onValueChange={(v) => setInterval(v as typeof interval)}>
+              <SelectTrigger className="w-24 bg-crypto-bg border-crypto-border text-crypto-text">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-crypto-card border-crypto-border">
+                {INTERVAL_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-crypto-text">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Lookback selector */}
           <Select value={String(lookbackDays)} onValueChange={(v) => setLookbackDays(Number(v))}>
             <SelectTrigger className="w-32 bg-crypto-bg border-crypto-border text-crypto-text">
@@ -157,33 +245,30 @@ export default function ScannerPage() {
               ))}
             </SelectContent>
           </Select>
-
-          {/* Local data indicator */}
-          <span className="text-xs text-crypto-muted bg-crypto-bg px-2 py-1 rounded">
-            Local Data
-          </span>
         </div>
       </div>
 
-      {/* Loading State - Shows even while displaying partial results */}
-      {isLoading && (
+      {/* Loading State */}
+      {scanner.isLoading && (
         <div className="bg-crypto-card rounded-lg border border-crypto-border p-4">
           <div className="flex items-center gap-4">
             <Loader2 className="w-6 h-6 animate-spin text-crypto-accent" />
             <div className="flex-1">
               <p className="text-crypto-text font-medium">
-                {progress.loaded === 0 ? "Loading local data..." : `Loading symbols... ${progress.loaded}/${progress.total}`}
+                {scanner.progress.loaded === 0
+                  ? `Loading ${dataSource} data...`
+                  : `Loading symbols... ${scanner.progress.loaded}/${scanner.progress.total}`}
               </p>
               <p className="text-crypto-muted text-sm">
                 {allResults && allResults.length > 0
                   ? `Analyzing ${allResults.length} pairs...`
-                  : "Reading price data from local database..."}
+                  : `Reading ${dataSource} data from local database...`}
               </p>
             </div>
             <div className="w-32 h-2 bg-crypto-bg rounded-full overflow-hidden">
               <div
                 className="h-full bg-crypto-accent transition-all duration-300"
-                style={{ width: `${progress.total > 0 ? (progress.loaded / progress.total) * 100 : 0}%` }}
+                style={{ width: `${scanner.progress.total > 0 ? (scanner.progress.loaded / scanner.progress.total) * 100 : 0}%` }}
               />
             </div>
           </div>
@@ -191,21 +276,30 @@ export default function ScannerPage() {
       )}
 
       {/* Error State */}
-      {isError && !isLoading && (
+      {scanner.isError && !scanner.isLoading && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
           <XCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-          <p className="text-red-500 mb-2">Local data not found.</p>
+          <p className="text-red-500 mb-2">
+            {dataSource === "futures" ? "Futures data not found." : "Spot data not found."}
+          </p>
           <p className="text-crypto-muted text-sm">
-            Run <code className="bg-crypto-bg px-2 py-1 rounded">npm run db:update</code> to fetch and export price data.
+            Run{" "}
+            <code className="bg-crypto-bg px-2 py-1 rounded">
+              {dataSource === "futures" ? "npm run db:futures:export" : "npm run db:update"}
+            </code>{" "}
+            to export data.
           </p>
         </div>
       )}
 
-      {/* Results - Show partial results even while loading */}
-      {!isError && allResults && allResults.length > 0 && (
+      {/* Results */}
+      {!scanner.isError && allResults && allResults.length > 0 && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className={cn(
+            "grid gap-4",
+            dataSource === "futures" ? "grid-cols-2 lg:grid-cols-6" : "grid-cols-2 lg:grid-cols-5"
+          )}>
             <div className="bg-crypto-card rounded-lg border border-crypto-border p-4">
               <div className="flex items-center gap-2 text-crypto-muted text-sm mb-2">
                 <BarChart3 className="w-4 h-4" />
@@ -255,6 +349,18 @@ export default function ScannerPage() {
                 {summary.avgScore.toFixed(1)}
               </p>
             </div>
+
+            {dataSource === "futures" && "highFundingArb" in summary && (
+              <div className="bg-crypto-card rounded-lg border border-crypto-border p-4">
+                <div className="flex items-center gap-2 text-crypto-muted text-sm mb-2">
+                  <Wallet className="w-4 h-4 text-purple-500" />
+                  High Funding
+                </div>
+                <p className="text-2xl font-bold text-purple-500">
+                  {(summary as { highFundingArb: number }).highFundingArb}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Filters */}
@@ -293,6 +399,9 @@ export default function ScannerPage() {
                 <SelectItem value="pValue" className="text-crypto-text">P-Value (Low)</SelectItem>
                 <SelectItem value="halfLife" className="text-crypto-text">Half-Life (Fast)</SelectItem>
                 <SelectItem value="zScore" className="text-crypto-text">Z-Score (Extreme)</SelectItem>
+                {dataSource === "futures" && (
+                  <SelectItem value="funding" className="text-crypto-text">Funding Spread</SelectItem>
+                )}
               </SelectContent>
             </Select>
 
@@ -312,80 +421,101 @@ export default function ScannerPage() {
                   <TableHead className="text-crypto-muted text-right">Correlation</TableHead>
                   <TableHead className="text-crypto-muted text-right">Half-Life</TableHead>
                   <TableHead className="text-crypto-muted text-right">Z-Score</TableHead>
-                  <TableHead className="text-crypto-muted text-right">Hedge Ratio</TableHead>
+                  {dataSource === "futures" && (
+                    <>
+                      <TableHead className="text-crypto-muted text-right">Funding A</TableHead>
+                      <TableHead className="text-crypto-muted text-right">Funding B</TableHead>
+                    </>
+                  )}
+                  <TableHead className="text-crypto-muted text-right">Hedge</TableHead>
                   <TableHead className="text-crypto-muted text-center">Signal</TableHead>
                   <TableHead className="text-crypto-muted"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayResults.map((result, idx) => (
-                  <TableRow
-                    key={`${result.pair[0]}-${result.pair[1]}`}
-                    className={cn(
-                      "border-crypto-border",
-                      result.isCointegrated && result.signal !== "neutral"
-                        ? "bg-crypto-accent/5"
-                        : ""
-                    )}
-                  >
-                    <TableCell className="font-medium text-crypto-text">
-                      <span className="font-mono">
-                        {result.symbols[0]}/{result.symbols[1]}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={cn(
-                        "font-mono font-semibold",
-                        result.score >= 70 ? "text-green-500" :
-                        result.score >= 50 ? "text-yellow-500" : "text-crypto-text"
-                      )}>
-                        {result.score.toFixed(1)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <CointegrationBadge
-                        isCointegrated={result.isCointegrated}
-                        pValue={result.pValue}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-crypto-text">
-                      {result.correlation.toFixed(3)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={cn(
-                        "font-mono",
-                        result.halfLife >= 5 && result.halfLife <= 30
-                          ? "text-green-500"
-                          : "text-crypto-text"
-                      )}>
-                        {isFinite(result.halfLife) ? `${result.halfLife.toFixed(1)}d` : "∞"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={cn(
-                        "font-mono",
-                        Math.abs(result.currentZScore) >= 2 ? "text-yellow-500" :
-                        Math.abs(result.currentZScore) >= 1.5 ? "text-crypto-accent" : "text-crypto-text"
-                      )}>
-                        {result.currentZScore.toFixed(2)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-crypto-text">
-                      {result.hedgeRatio.toFixed(3)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <SignalBadge signal={result.signal} strength={result.signalStrength} />
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/compare?asset1=${result.pair[0]}&asset2=${result.pair[1]}`}
-                        className="text-crypto-accent hover:underline text-sm"
-                      >
-                        Analyze
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {displayResults.map((result) => {
+                  const isFutures = dataSource === "futures";
+                  const futuresResult = isFutures ? result as FuturesPairScanResult : null;
+
+                  return (
+                    <TableRow
+                      key={`${result.pair[0]}-${result.pair[1]}`}
+                      className={cn(
+                        "border-crypto-border",
+                        result.isCointegrated && result.signal !== "neutral"
+                          ? "bg-crypto-accent/5"
+                          : ""
+                      )}
+                    >
+                      <TableCell className="font-medium text-crypto-text">
+                        <span className="font-mono">
+                          {result.symbols[0]}/{result.symbols[1]}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={cn(
+                          "font-mono font-semibold",
+                          result.score >= 70 ? "text-green-500" :
+                          result.score >= 50 ? "text-yellow-500" : "text-crypto-text"
+                        )}>
+                          {result.score.toFixed(1)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <CointegrationBadge
+                          isCointegrated={result.isCointegrated}
+                          pValue={result.pValue}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-crypto-text">
+                        {result.correlation.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={cn(
+                          "font-mono",
+                          result.halfLife >= 5 && result.halfLife <= 30
+                            ? "text-green-500"
+                            : "text-crypto-text"
+                        )}>
+                          {isFinite(result.halfLife) ? `${result.halfLife.toFixed(1)}d` : "∞"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={cn(
+                          "font-mono",
+                          Math.abs(result.currentZScore) >= 2 ? "text-yellow-500" :
+                          Math.abs(result.currentZScore) >= 1.5 ? "text-crypto-accent" : "text-crypto-text"
+                        )}>
+                          {result.currentZScore.toFixed(2)}
+                        </span>
+                      </TableCell>
+                      {isFutures && futuresResult && (
+                        <>
+                          <TableCell className="text-right">
+                            <FundingBadge rate={futuresResult.avgFundingRate1} />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <FundingBadge rate={futuresResult.avgFundingRate2} />
+                          </TableCell>
+                        </>
+                      )}
+                      <TableCell className="text-right font-mono text-crypto-text">
+                        {result.hedgeRatio.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <SignalBadge signal={result.signal} strength={result.signalStrength} />
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/compare?asset1=${result.pair[0]}&asset2=${result.pair[1]}`}
+                          className="text-crypto-accent hover:underline text-sm"
+                        >
+                          Analyze
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
 
