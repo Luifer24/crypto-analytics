@@ -71,8 +71,8 @@ export function useFundingRates(
             const fundingData = await fundingRes.json();
             const history: FundingRateData[] = fundingData.data.map((d: any) => ({
               fundingTime: d.t,
-              fundingRate: d.r,
-              markPrice: d.p,
+              fundingRate: d.rate,
+              markPrice: d.mark,
             }));
 
             if (history.length === 0) continue;
