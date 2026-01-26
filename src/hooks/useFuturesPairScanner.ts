@@ -13,6 +13,7 @@ import {
   generateSignal,
 } from "@/lib/cointegration";
 import type { PairScanResult } from "@/types/arbitrage";
+import { progressEmitter } from "./useScannerProgress";
 
 // ============================================================================
 // Types
@@ -157,6 +158,11 @@ async function fetchFuturesScannerData(
 ): Promise<FuturesPairScanResult[]> {
   console.log("[Scanner] Starting futures scan...", config);
 
+  progressEmitter.emit({
+    phase: "loading-symbols",
+    message: "Loading symbols list...",
+  });
+
   // Load symbols list
   const symbolsRes = await fetch("/data/futures/symbols.json");
   if (!symbolsRes.ok) {
@@ -170,6 +176,12 @@ async function fetchFuturesScannerData(
   );
 
   console.log(`[Scanner] Found ${validSymbols.length} symbols with ${config.interval} data`);
+
+  progressEmitter.emit({
+    phase: "loading-prices",
+    symbolsTotal: validSymbols.length,
+    message: `Loading price data for ${validSymbols.length} symbols...`,
+  });
 
   // Load price and funding data
   const priceData = new Map<string, number[]>();
@@ -203,6 +215,11 @@ async function fetchFuturesScannerData(
       }
 
       loadedCount++;
+      // Update progress
+      progressEmitter.emit({
+        symbolsLoaded: loadedCount,
+        message: `Loading prices: ${loadedCount}/${validSymbols.length} symbols...`,
+      });
       // Log progress every 10 symbols
       if (loadedCount % 10 === 0 || loadedCount === validSymbols.length) {
         console.log(`[Scanner] Loaded ${loadedCount}/${validSymbols.length} symbols...`);
@@ -220,6 +237,12 @@ async function fetchFuturesScannerData(
   const totalPairs = (symbols.length * (symbols.length - 1)) / 2;
   console.log(`[Scanner] Analyzing ${totalPairs} pairs...`);
 
+  progressEmitter.emit({
+    phase: "analyzing",
+    pairsTotal: totalPairs,
+    message: `Analyzing ${totalPairs} pairs...`,
+  });
+
   let analyzedPairs = 0;
   const startTime = Date.now();
 
@@ -230,10 +253,18 @@ async function fetchFuturesScannerData(
 
       analyzedPairs++;
 
-      // Log progress every 100 pairs
-      if (analyzedPairs % 100 === 0 || analyzedPairs === totalPairs) {
+      // Update progress every 50 pairs
+      if (analyzedPairs % 50 === 0 || analyzedPairs === totalPairs) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[Scanner] Progress: ${analyzedPairs}/${totalPairs} pairs (${elapsed}s, ${results.length} matches so far)`);
+        progressEmitter.emit({
+          pairsAnalyzed: analyzedPairs,
+          message: `Analyzing pairs: ${analyzedPairs}/${totalPairs} (${results.length} found)`,
+        });
+
+        // Log progress every 100 pairs
+        if (analyzedPairs % 100 === 0 || analyzedPairs === totalPairs) {
+          console.log(`[Scanner] Progress: ${analyzedPairs}/${totalPairs} pairs (${elapsed}s, ${results.length} matches so far)`);
+        }
       }
 
       const prices1 = priceData.get(symbol1)!;
@@ -296,6 +327,11 @@ async function fetchFuturesScannerData(
   results.sort((a, b) => b.score - a.score);
 
   console.log(`[Scanner] Analysis complete: ${results.length} pairs found`);
+
+  progressEmitter.emit({
+    phase: "complete",
+    message: `Analysis complete: ${results.length} pairs found`,
+  });
 
   return results;
 }

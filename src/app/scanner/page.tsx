@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useLocalPairScanner, getLocalScanSummary } from "@/hooks/useLocalPairScanner";
 import { useFuturesPairScanner, getFuturesScanSummary, type FuturesPairScanResult } from "@/hooks/useFuturesPairScanner";
+import { useScannerProgress } from "@/hooks/useScannerProgress";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -134,6 +135,9 @@ export default function ScannerPage() {
   // Select active scanner
   const scanner = dataSource === "futures" ? futuresScanner : spotScanner;
   const allResults = scanner.allResults;
+
+  // Track scanner progress
+  const progress = useScannerProgress();
 
   // Apply UI filters and sorting
   const displayResults = useMemo(() => {
@@ -297,18 +301,55 @@ export default function ScannerPage() {
 
       {/* Loading State */}
       {scanner.isLoading && (
-        <div className="bg-crypto-card rounded-lg border border-crypto-border p-4">
-          <div className="flex items-center gap-4">
+        <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+          <div className="flex items-center gap-4 mb-4">
             <Loader2 className="w-6 h-6 animate-spin text-crypto-accent" />
             <div className="flex-1">
               <p className="text-crypto-text font-medium">
-                Scanning {dataSource} pairs...
+                {progress.message || `Scanning ${dataSource} pairs...`}
               </p>
               <p className="text-crypto-muted text-sm">
-                Loading data and analyzing cointegration relationships
+                {progress.phase === "loading-symbols" && "Checking available symbols..."}
+                {progress.phase === "loading-prices" && `${progress.symbolsLoaded}/${progress.symbolsTotal} symbols loaded`}
+                {progress.phase === "analyzing" && `${progress.pairsAnalyzed}/${progress.pairsTotal} pairs analyzed`}
+                {!progress.phase && "Initializing scanner..."}
               </p>
             </div>
           </div>
+
+          {/* Progress bar */}
+          {(progress.phase === "loading-prices" || progress.phase === "analyzing") && (
+            <div className="space-y-2">
+              {progress.phase === "loading-prices" && progress.symbolsTotal > 0 && (
+                <>
+                  <div className="flex justify-between text-xs text-crypto-muted">
+                    <span>Loading prices</span>
+                    <span>{Math.round((progress.symbolsLoaded / progress.symbolsTotal) * 100)}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-crypto-bg rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-crypto-accent transition-all duration-300"
+                      style={{ width: `${(progress.symbolsLoaded / progress.symbolsTotal) * 100}%` }}
+                    />
+                  </div>
+                </>
+              )}
+              {progress.phase === "analyzing" && progress.pairsTotal > 0 && (
+                <>
+                  <div className="flex justify-between text-xs text-crypto-muted">
+                    <span>Analyzing pairs</span>
+                    <span>{Math.round((progress.pairsAnalyzed / progress.pairsTotal) * 100)}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-crypto-bg rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all duration-300"
+                      style={{ width: `${(progress.pairsAnalyzed / progress.pairsTotal) * 100}%` }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
