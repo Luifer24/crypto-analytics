@@ -43,6 +43,8 @@ const timeRanges = [
   { label: "30D", days: 30 },
   { label: "90D", days: 90 },
   { label: "180D", days: 180 },
+  { label: "1Y", days: 365 },
+  { label: "2Y", days: 730 },
 ];
 
 // Calculate rolling mean
@@ -124,7 +126,7 @@ const calculateReturns = (prices: number[]): number[] => {
 export default function ComparePage() {
   const [asset1, setAsset1] = useState("bitcoin");
   const [asset2, setAsset2] = useState("ethereum");
-  const [days, setDays] = useState(90);
+  const [days, setDays] = useState(180); // 180d provides sufficient samples for robust ADF testing
   const [spreadType, setSpreadType] = useState<"ratio" | "diff">("ratio");
 
   const { data: cryptoList } = useCryptoList(50);
@@ -300,7 +302,7 @@ export default function ComparePage() {
     if (!analysis) return [];
     return analysis.timestamps.map((ts, i) => ({
       time: ts,
-      zScore: analysis.zScore[i],
+      zScore: analysis.formalZScore[i], // Use formal z-score from cointegration residuals
     }));
   }, [analysis]);
 
@@ -367,21 +369,26 @@ export default function ComparePage() {
             </SelectContent>
           </Select>
 
-          <div className="flex items-center gap-1 bg-crypto-bg rounded-lg p-1">
-            {timeRanges.map((range) => (
-              <button
-                key={range.days}
-                onClick={() => setDays(range.days)}
-                className={cn(
-                  "px-3 py-1 text-sm font-medium rounded transition-colors",
-                  days === range.days
-                    ? "bg-crypto-accent text-crypto-bg"
-                    : "text-crypto-muted hover:text-crypto-text"
-                )}
-              >
-                {range.label}
-              </button>
-            ))}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1 bg-crypto-bg rounded-lg p-1">
+              {timeRanges.map((range) => (
+                <button
+                  key={range.days}
+                  onClick={() => setDays(range.days)}
+                  className={cn(
+                    "px-3 py-1 text-sm font-medium rounded transition-colors",
+                    days === range.days
+                      ? "bg-crypto-accent text-crypto-bg"
+                      : "text-crypto-muted hover:text-crypto-text"
+                  )}
+                >
+                  {range.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-crypto-muted text-right">
+              More data = more robust statistical tests (ADF needs 100+ samples)
+            </p>
           </div>
         </div>
       </div>
@@ -760,7 +767,24 @@ export default function ComparePage() {
                   fontSize={12}
                   tickLine={false}
                 />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
+                <YAxis
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                  domain={(() => {
+                    // Calculate dynamic domain to show small variations
+                    const allBetas = kalmanBetaData.flatMap(d => [d.staticBeta, d.dynamicBeta]);
+                    const minBeta = Math.min(...allBetas);
+                    const maxBeta = Math.max(...allBetas);
+                    const range = maxBeta - minBeta;
+                    const padding = range > 0 ? range * 0.1 : 0.001; // 10% padding or minimum
+                    return [
+                      (minBeta - padding).toFixed(4),
+                      (maxBeta + padding).toFixed(4)
+                    ];
+                  })()}
+                  tickFormatter={(value) => Number(value).toFixed(4)}
+                />
                 <Tooltip
                   content={({ active, payload, label }) => {
                     if (active && payload?.length && label) {
@@ -811,131 +835,112 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* Performance Comparison */}
-      <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
-        <h3 className="font-semibold text-crypto-text text-lg mb-4">
-          Normalized Performance (Base 100)
-        </h3>
-        <div className="h-64">
-          {isLoading ? (
-            <div className="animate-pulse h-full bg-crypto-border rounded" />
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={performanceData}>
-                <XAxis
-                  dataKey="time"
-                  tickFormatter={(ts) => format(new Date(ts), "MMM d")}
-                  stroke="#64748b"
-                  fontSize={12}
-                  tickLine={false}
-                />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload?.length && label) {
-                      return (
-                        <div className="bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 shadow-lg">
-                          <p className="text-crypto-muted text-xs mb-2">
-                            {format(new Date(label as number), "MMM d, yyyy")}
-                          </p>
-                          {payload.map((entry, index) => (
-                            <p key={index} className="text-sm" style={{ color: entry.color }}>
-                              {String(entry.dataKey).toUpperCase()}: {Number(entry.value).toFixed(2)}
+      {/* Performance and Z-Score Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Performance Comparison */}
+        <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+          <h3 className="font-semibold text-crypto-text text-lg mb-4">
+            Normalized Performance (Base 100)
+          </h3>
+          <div className="h-64">
+            {isLoading ? (
+              <div className="animate-pulse h-full bg-crypto-border rounded" />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={performanceData}>
+                  <XAxis
+                    dataKey="time"
+                    tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                    stroke="#64748b"
+                    fontSize={12}
+                    tickLine={false}
+                  />
+                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload?.length && label) {
+                        return (
+                          <div className="bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 shadow-lg">
+                            <p className="text-crypto-muted text-xs mb-2">
+                              {format(new Date(label as number), "MMM d, yyyy")}
                             </p>
-                          ))}
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Line type="monotone" dataKey={asset1} stroke="#22c55e" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey={asset2} stroke="#3b82f6" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+                            {payload.map((entry, index) => (
+                              <p key={index} className="text-sm" style={{ color: entry.color }}>
+                                {String(entry.dataKey).toUpperCase()}: {Number(entry.value).toFixed(2)}
+                              </p>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Line type="monotone" dataKey={asset1} stroke="#22c55e" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={asset2} stroke="#3b82f6" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Z-Score Chart */}
-      <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-semibold text-crypto-text text-lg">Z-Score of Spread</h3>
-            <p className="text-crypto-muted text-sm">Signal zones: ±1σ (yellow), ±2σ (red)</p>
+        {/* Z-Score Chart */}
+        <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+          <div className="mb-4">
+            <h3 className="font-semibold text-crypto-text text-lg">Z-Score of Cointegration Spread</h3>
+            <p className="text-crypto-muted text-sm">Based on Engle-Granger residuals. Signal zones: ±1σ (yellow), ±2σ (red)</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSpreadType("ratio")}
-              className={cn(
-                "px-3 py-1 text-sm rounded",
-                spreadType === "ratio" ? "bg-crypto-accent text-crypto-bg" : "text-crypto-muted hover:text-crypto-text"
-              )}
-            >
-              Ratio
-            </button>
-            <button
-              onClick={() => setSpreadType("diff")}
-              className={cn(
-                "px-3 py-1 text-sm rounded",
-                spreadType === "diff" ? "bg-crypto-accent text-crypto-bg" : "text-crypto-muted hover:text-crypto-text"
-              )}
-            >
-              Difference
-            </button>
+          <div className="h-64">
+            {isLoading ? (
+              <div className="animate-pulse h-full bg-crypto-border rounded" />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={zScoreData}>
+                  <XAxis
+                    dataKey="time"
+                    tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                    stroke="#64748b"
+                    fontSize={12}
+                    tickLine={false}
+                  />
+                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} domain={[-3, 3]} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload?.length && label) {
+                        const zScore = payload[0]?.value as number;
+                        return (
+                          <div className="bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 shadow-lg">
+                            <p className="text-crypto-muted text-xs mb-1">
+                              {format(new Date(label as number), "MMM d, yyyy")}
+                            </p>
+                            <p className={cn(
+                              "text-sm font-semibold",
+                              Math.abs(zScore) > 2 ? "text-red-500" :
+                              Math.abs(zScore) > 1 ? "text-yellow-500" : "text-crypto-text"
+                            )}>
+                              Z-Score: {zScore?.toFixed(2)}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <ReferenceLine y={2} stroke="#ef4444" strokeDasharray="5 5" />
+                  <ReferenceLine y={1} stroke="#eab308" strokeDasharray="3 3" />
+                  <ReferenceLine y={0} stroke="#64748b" />
+                  <ReferenceLine y={-1} stroke="#eab308" strokeDasharray="3 3" />
+                  <ReferenceLine y={-2} stroke="#ef4444" strokeDasharray="5 5" />
+                  <Area
+                    type="monotone"
+                    dataKey="zScore"
+                    stroke="#8b5cf6"
+                    fill="#8b5cf6"
+                    fillOpacity={0.3}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
           </div>
-        </div>
-        <div className="h-64">
-          {isLoading ? (
-            <div className="animate-pulse h-full bg-crypto-border rounded" />
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={zScoreData}>
-                <XAxis
-                  dataKey="time"
-                  tickFormatter={(ts) => format(new Date(ts), "MMM d")}
-                  stroke="#64748b"
-                  fontSize={12}
-                  tickLine={false}
-                />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} domain={[-3, 3]} />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload?.length && label) {
-                      const zScore = payload[0]?.value as number;
-                      return (
-                        <div className="bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 shadow-lg">
-                          <p className="text-crypto-muted text-xs mb-1">
-                            {format(new Date(label as number), "MMM d, yyyy")}
-                          </p>
-                          <p className={cn(
-                            "text-sm font-semibold",
-                            Math.abs(zScore) > 2 ? "text-red-500" :
-                            Math.abs(zScore) > 1 ? "text-yellow-500" : "text-crypto-text"
-                          )}>
-                            Z-Score: {zScore?.toFixed(2)}
-                          </p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <ReferenceLine y={2} stroke="#ef4444" strokeDasharray="5 5" />
-                <ReferenceLine y={1} stroke="#eab308" strokeDasharray="3 3" />
-                <ReferenceLine y={0} stroke="#64748b" />
-                <ReferenceLine y={-1} stroke="#eab308" strokeDasharray="3 3" />
-                <ReferenceLine y={-2} stroke="#ef4444" strokeDasharray="5 5" />
-                <Area
-                  type="monotone"
-                  dataKey="zScore"
-                  stroke="#8b5cf6"
-                  fill="#8b5cf6"
-                  fillOpacity={0.3}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
         </div>
       </div>
 

@@ -1,11 +1,11 @@
 /**
- * Local Pair Scanner Hook
+ * Local Pair Scanner Hook (React Query Version)
  *
- * Scans cryptocurrency pairs using local data from JSON files.
- * No API calls needed - instant analysis.
+ * Professional implementation using TanStack Query for automatic caching,
+ * deduplication, and state management.
  */
 
-import { useMemo, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   engleGrangerTest,
   calculateHalfLife,
@@ -14,7 +14,10 @@ import {
 } from "@/lib/cointegration";
 import type { PairScanResult, ScannerConfig } from "@/types/arbitrage";
 
-// Symbol info from local data
+// ============================================================================
+// Types
+// ============================================================================
+
 interface SymbolInfo {
   symbol: string;
   name: string;
@@ -38,18 +41,18 @@ interface PriceFileResponse {
   data: PriceData[];
 }
 
-// Default scanner configuration
 const DEFAULT_CONFIG: ScannerConfig = {
   minCorrelation: 0.5,
-  maxPValue: 0.10,
+  maxPValue: 0.1,
   minHalfLife: 1,
   maxHalfLife: 100,
   lookbackDays: 90,
 };
 
-/**
- * Calculate Pearson correlation
- */
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
 function calculateCorrelation(series1: number[], series2: number[]): number {
   const n = series1.length;
   if (n !== series2.length || n < 2) return 0;
@@ -57,7 +60,9 @@ function calculateCorrelation(series1: number[], series2: number[]): number {
   const mean1 = series1.reduce((a, b) => a + b, 0) / n;
   const mean2 = series2.reduce((a, b) => a + b, 0) / n;
 
-  let num = 0, den1 = 0, den2 = 0;
+  let num = 0,
+    den1 = 0,
+    den2 = 0;
   for (let i = 0; i < n; i++) {
     const d1 = series1[i] - mean1;
     const d2 = series2[i] - mean2;
@@ -70,14 +75,11 @@ function calculateCorrelation(series1: number[], series2: number[]): number {
   return den === 0 ? 0 : num / den;
 }
 
-/**
- * Calculate composite score
- */
 function calculateScore(result: Omit<PairScanResult, "score">): number {
   let score = 0;
 
   if (result.isCointegrated) score += 50;
-  score += Math.max(0, (0.10 - result.pValue) * 100);
+  score += Math.max(0, (0.1 - result.pValue) * 100);
   score += Math.abs(result.correlation) * 20;
 
   if (result.halfLife >= 5 && result.halfLife <= 30) {
@@ -99,183 +101,130 @@ function calculateScore(result: Omit<PairScanResult, "score">): number {
   return Math.round(score * 10) / 10;
 }
 
-/**
- * Analyze a pair
- */
-function analyzePair(
-  symbol1: string,
-  symbol2: string,
-  name1: string,
-  name2: string,
-  prices1: number[],
-  prices2: number[]
-): PairScanResult {
-  const correlation = calculateCorrelation(prices1, prices2);
-  const egResult = engleGrangerTest(prices1, prices2);
-  const halfLifeResult = calculateHalfLife(egResult.residuals);
-  const zScoreResult = calculateSpreadZScore(egResult.residuals, 20);
-  const signalResult = generateSignal(zScoreResult.currentZScore, 2, 0);
+// ============================================================================
+// Data Fetching Function
+// ============================================================================
 
-  const partialResult: Omit<PairScanResult, "score"> = {
-    pair: [symbol1.replace("USDT", "").toLowerCase(), symbol2.replace("USDT", "").toLowerCase()],
-    symbols: [symbol1.replace("USDT", ""), symbol2.replace("USDT", "")],
-    correlation,
-    isCointegrated: egResult.isCointegrated,
-    pValue: egResult.pValue,
-    halfLife: halfLifeResult.halfLife,
-    currentZScore: zScoreResult.currentZScore,
-    signal: signalResult.signal,
-    signalStrength: signalResult.strength,
-    hedgeRatio: egResult.hedgeRatio,
-  };
+async function fetchSpotScannerData(config: ScannerConfig): Promise<PairScanResult[]> {
+  console.log("[Scanner] Starting spot scan...", config);
 
-  return {
-    ...partialResult,
-    score: calculateScore(partialResult),
-  };
-}
+  // Load symbols list
+  const symbolsRes = await fetch("/data/symbols.json");
+  if (!symbolsRes.ok) {
+    throw new Error("Symbols not found. Run: npm run db:update");
+  }
+  const symbolsData: SymbolsResponse = await symbolsRes.json();
 
-/**
- * Hook to scan pairs using local data
- */
-export function useLocalPairScanner(config: Partial<ScannerConfig> = {}) {
-  const scannerConfig = { ...DEFAULT_CONFIG, ...config };
+  console.log(`[Scanner] Found ${symbolsData.symbols.length} symbols`);
 
-  const [symbols, setSymbols] = useState<SymbolInfo[]>([]);
-  const [priceData, setPriceData] = useState<Map<string, number[]>>(new Map());
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [loadedCount, setLoadedCount] = useState(0);
+  // Load price data for each symbol
+  const priceData = new Map<string, number[]>();
+  const cutoffTime = Date.now() - config.lookbackDays * 24 * 60 * 60 * 1000;
 
-  // Load symbols and price data
-  useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
-      setHasError(false);
+  for (const sym of symbolsData.symbols) {
+    try {
+      const priceRes = await fetch(`/data/prices/${sym.symbol}.json`);
+      if (priceRes.ok) {
+        const priceJson: PriceFileResponse = await priceRes.json();
+        const prices = priceJson.data
+          .filter((p) => p.t >= cutoffTime)
+          .map((p) => p.c);
 
-      try {
-        // Load symbols list
-        const symbolsRes = await fetch("/data/symbols.json");
-        if (!symbolsRes.ok) {
-          throw new Error("Symbols not found. Run: npm run db:update");
+        if (prices.length >= 30) {
+          priceData.set(sym.symbol, prices);
         }
-        const symbolsData: SymbolsResponse = await symbolsRes.json();
-        setSymbols(symbolsData.symbols);
-
-        // Load price data for each symbol
-        const newPriceData = new Map<string, number[]>();
-        const cutoffTime = Date.now() - scannerConfig.lookbackDays * 24 * 60 * 60 * 1000;
-
-        for (let i = 0; i < symbolsData.symbols.length; i++) {
-          const sym = symbolsData.symbols[i];
-
-          try {
-            const priceRes = await fetch(`/data/prices/${sym.symbol}.json`);
-            if (priceRes.ok) {
-              const priceJson: PriceFileResponse = await priceRes.json();
-              const prices = priceJson.data
-                .filter((p) => p.t >= cutoffTime)
-                .map((p) => p.c);
-
-              if (prices.length >= 30) {
-                newPriceData.set(sym.symbol, prices);
-              }
-            }
-          } catch {
-            console.warn(`Failed to load ${sym.symbol}`);
-          }
-
-          setLoadedCount(i + 1);
-          setPriceData(new Map(newPriceData));
-        }
-
-        setIsLoading(false);
-      } catch (error) {
-        console.error("Error loading data:", error);
-        setHasError(true);
-        setIsLoading(false);
       }
-    };
+    } catch (error) {
+      console.warn(`[Scanner] Failed to load ${sym.symbol}:`, error);
+    }
+  }
 
-    loadData();
-  }, [scannerConfig.lookbackDays]);
+  console.log(`[Scanner] Loaded price data for ${priceData.size} symbols`);
 
-  // Analyze pairs
-  const scanResults = useMemo(() => {
-    if (priceData.size < 2) {
-      return {
-        isLoading,
-        isError: hasError,
-        data: null,
-        progress: { loaded: loadedCount, total: symbols.length },
+  // Analyze all pairs
+  const results: PairScanResult[] = [];
+  const symbols = Array.from(priceData.keys());
+
+  for (let i = 0; i < symbols.length; i++) {
+    for (let j = i + 1; j < symbols.length; j++) {
+      const symbol1 = symbols[i];
+      const symbol2 = symbols[j];
+
+      const prices1 = priceData.get(symbol1)!;
+      const prices2 = priceData.get(symbol2)!;
+
+      // Ensure same length
+      const minLen = Math.min(prices1.length, prices2.length);
+      const p1 = prices1.slice(-minLen);
+      const p2 = prices2.slice(-minLen);
+
+      // Calculate metrics
+      const correlation = calculateCorrelation(p1, p2);
+      if (Math.abs(correlation) < config.minCorrelation) continue;
+
+      const cointegrationResult = engleGrangerTest(p1, p2);
+      const halfLifeResult = calculateHalfLife(cointegrationResult.residuals);
+      const zScoreResult = calculateSpreadZScore(cointegrationResult.residuals, 20);
+      const signalResult = generateSignal(zScoreResult.currentZScore, 2, 0);
+
+      const baseResult: Omit<PairScanResult, "score"> = {
+        pair: [symbol1.replace("USDT", "").toLowerCase(), symbol2.replace("USDT", "").toLowerCase()],
+        symbols: [symbol1.replace("USDT", ""), symbol2.replace("USDT", "")],
+        correlation,
+        isCointegrated: cointegrationResult.isCointegrated,
+        pValue: cointegrationResult.pValue,
+        halfLife: halfLifeResult.halfLife,
+        currentZScore: zScoreResult.currentZScore,
+        signal: signalResult.signal,
+        signalStrength: signalResult.strength,
+        hedgeRatio: cointegrationResult.hedgeRatio,
       };
+
+      results.push({
+        ...baseResult,
+        score: calculateScore(baseResult),
+      });
     }
+  }
 
-    const results: PairScanResult[] = [];
-    const symbolsWithData = Array.from(priceData.keys());
+  // Sort by score
+  results.sort((a, b) => b.score - a.score);
 
-    for (let i = 0; i < symbolsWithData.length; i++) {
-      for (let j = i + 1; j < symbolsWithData.length; j++) {
-        const sym1 = symbolsWithData[i];
-        const sym2 = symbolsWithData[j];
-        const prices1 = priceData.get(sym1)!;
-        const prices2 = priceData.get(sym2)!;
+  console.log(`[Scanner] Analysis complete: ${results.length} pairs found`);
 
-        const info1 = symbols.find((s) => s.symbol === sym1);
-        const info2 = symbols.find((s) => s.symbol === sym2);
+  return results;
+}
 
-        try {
-          const result = analyzePair(
-            sym1,
-            sym2,
-            info1?.name || sym1,
-            info2?.name || sym2,
-            prices1,
-            prices2
-          );
-          results.push(result);
-        } catch (error) {
-          console.warn(`Error analyzing ${sym1}/${sym2}:`, error);
-        }
-      }
-    }
+// ============================================================================
+// React Query Hook
+// ============================================================================
 
-    results.sort((a, b) => b.score - a.score);
+export function useLocalPairScanner(config: Partial<ScannerConfig> = {}) {
+  const fullConfig = { ...DEFAULT_CONFIG, ...config };
 
-    return {
-      isLoading,
-      isError: hasError,
-      data: results,
-      progress: { loaded: loadedCount, total: symbols.length },
-    };
-  }, [priceData, symbols, isLoading, hasError, loadedCount]);
-
-  // Filter results
-  const filteredResults = useMemo(() => {
-    if (!scanResults.data) return null;
-
-    return scanResults.data.filter((result) => {
-      if (Math.abs(result.correlation) < scannerConfig.minCorrelation) return false;
-      if (result.isCointegrated && result.pValue > scannerConfig.maxPValue) return false;
-      if (result.halfLife < scannerConfig.minHalfLife || result.halfLife > scannerConfig.maxHalfLife) return false;
-      return true;
-    });
-  }, [scanResults.data, scannerConfig]);
+  const query = useQuery({
+    queryKey: ["spot-scanner", fullConfig],
+    queryFn: () => fetchSpotScannerData(fullConfig),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+  });
 
   return {
-    isLoading: scanResults.isLoading,
-    isError: scanResults.isError,
-    progress: scanResults.progress,
-    allResults: scanResults.data,
-    filteredResults,
-    config: scannerConfig,
-    dataSource: "local",
+    allResults: query.data || null,
+    filteredResults: query.data || null,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    progress: { loaded: 0, total: 0 }, // Not needed with React Query
+    config: fullConfig,
+    refetch: query.refetch,
   };
 }
 
-/**
- * Summary helper
- */
+// ============================================================================
+// Summary Helper
+// ============================================================================
+
 export function getLocalScanSummary(results: PairScanResult[] | null) {
   if (!results || results.length === 0) {
     return {
@@ -290,7 +239,9 @@ export function getLocalScanSummary(results: PairScanResult[] | null) {
 
   const cointegrated = results.filter((r) => r.isCointegrated);
   const activeSignals = results.filter((r) => r.signal !== "neutral");
-  const strongSignals = results.filter((r) => r.signalStrength === "strong" && r.signal !== "neutral");
+  const strongSignals = results.filter(
+    (r) => r.signalStrength === "strong" && r.signal !== "neutral"
+  );
 
   return {
     totalPairs: results.length,

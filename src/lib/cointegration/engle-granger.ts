@@ -226,6 +226,15 @@ export function engleGrangerTest(
   // Determine if cointegrated using cointegration critical values
   const isCointegrated = residualADF.statistic < criticalValues["5%"];
 
+  // DEBUG: Log values to understand what's happening
+  console.log("[Engle-Granger Debug]", {
+    adfStat: residualADF.statistic,
+    cv5pct: criticalValues["5%"],
+    comparison: `${residualADF.statistic} < ${criticalValues["5%"]}`,
+    result: isCointegrated,
+    residualsLength: residuals.length,
+  });
+
   // Calculate p-value using cointegration distribution
   const pValue = approximateCointegrationPValue(residualADF.statistic, 2);
 

@@ -33,6 +33,7 @@ import {
   Target,
   Wallet,
   LineChart,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import type { PairScanResult, Signal } from "@/types/arbitrage";
@@ -76,12 +77,15 @@ function SignalBadge({ signal, strength }: { signal: Signal; strength: string })
 }
 
 function CointegrationBadge({ isCointegrated, pValue }: { isCointegrated: boolean; pValue: number }) {
+  // Use p-value directly: < 5% = cointegrated (green), >= 5% = not cointegrated (red)
+  const isActuallyCointegrated = pValue < 0.05;
+
   return (
     <span className={cn(
       "px-2 py-1 text-xs rounded flex items-center gap-1",
-      isCointegrated ? "bg-green-500/20 text-green-500" : "bg-red-500/20 text-red-500"
+      isActuallyCointegrated ? "bg-green-500/20 text-green-500" : "bg-red-500/20 text-red-500"
     )}>
-      {isCointegrated ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+      {isActuallyCointegrated ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
       {(pValue * 100).toFixed(1)}%
     </span>
   );
@@ -107,7 +111,7 @@ export default function ScannerPage() {
   const [showOnlySignals, setShowOnlySignals] = useState(false);
   const [sortBy, setSortBy] = useState<"score" | "pValue" | "halfLife" | "zScore" | "funding">("score");
 
-  // Run the appropriate scanner
+  // Run the appropriate scanner (with built-in caching)
   const spotScanner = useLocalPairScanner({
     lookbackDays,
     minCorrelation: 0.3,
@@ -245,6 +249,20 @@ export default function ScannerPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Refresh button */}
+          <button
+            onClick={() => {
+              console.log("[Scanner] Manual refresh triggered");
+              scanner.refetch();
+            }}
+            className="px-3 py-1.5 text-sm flex items-center gap-1.5 bg-crypto-bg border border-crypto-border rounded text-crypto-text hover:bg-crypto-card transition-colors disabled:opacity-50"
+            title="Re-scan all pairs"
+            disabled={scanner.isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 ${scanner.isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
         </div>
       </div>
 
@@ -255,21 +273,11 @@ export default function ScannerPage() {
             <Loader2 className="w-6 h-6 animate-spin text-crypto-accent" />
             <div className="flex-1">
               <p className="text-crypto-text font-medium">
-                {scanner.progress.loaded === 0
-                  ? `Loading ${dataSource} data...`
-                  : `Loading symbols... ${scanner.progress.loaded}/${scanner.progress.total}`}
+                Scanning {dataSource} pairs...
               </p>
               <p className="text-crypto-muted text-sm">
-                {allResults && allResults.length > 0
-                  ? `Analyzing ${allResults.length} pairs...`
-                  : `Reading ${dataSource} data from local database...`}
+                Loading data and analyzing cointegration relationships
               </p>
-            </div>
-            <div className="w-32 h-2 bg-crypto-bg rounded-full overflow-hidden">
-              <div
-                className="h-full bg-crypto-accent transition-all duration-300"
-                style={{ width: `${scanner.progress.total > 0 ? (scanner.progress.loaded / scanner.progress.total) * 100 : 0}%` }}
-              />
             </div>
           </div>
         </div>
@@ -421,15 +429,14 @@ export default function ScannerPage() {
                   <TableHead className="text-crypto-muted text-right">Correlation</TableHead>
                   <TableHead className="text-crypto-muted text-right">Half-Life</TableHead>
                   <TableHead className="text-crypto-muted text-right">Z-Score</TableHead>
+                  <TableHead className="text-crypto-muted text-right">Hedge</TableHead>
+                  <TableHead className="text-crypto-muted text-center">Signal</TableHead>
                   {dataSource === "futures" && (
                     <>
                       <TableHead className="text-crypto-muted text-right">Funding A</TableHead>
                       <TableHead className="text-crypto-muted text-right">Funding B</TableHead>
                     </>
                   )}
-                  <TableHead className="text-crypto-muted text-right">Hedge</TableHead>
-                  <TableHead className="text-crypto-muted text-center">Signal</TableHead>
-                  <TableHead className="text-crypto-muted"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -473,9 +480,8 @@ export default function ScannerPage() {
                       <TableCell className="text-right">
                         <span className={cn(
                           "font-mono",
-                          result.halfLife >= 5 && result.halfLife <= 30
-                            ? "text-green-500"
-                            : "text-crypto-text"
+                          result.halfLife <= 5 ? "text-green-500" :
+                          result.halfLife <= 10 ? "text-yellow-500" : "text-crypto-text"
                         )}>
                           {isFinite(result.halfLife) ? `${result.halfLife.toFixed(1)}d` : "∞"}
                         </span>
@@ -489,6 +495,12 @@ export default function ScannerPage() {
                           {result.currentZScore.toFixed(2)}
                         </span>
                       </TableCell>
+                      <TableCell className="text-right font-mono text-crypto-text">
+                        {result.hedgeRatio.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <SignalBadge signal={result.signal} strength={result.signalStrength} />
+                      </TableCell>
                       {isFutures && futuresResult && (
                         <>
                           <TableCell className="text-right">
@@ -499,20 +511,6 @@ export default function ScannerPage() {
                           </TableCell>
                         </>
                       )}
-                      <TableCell className="text-right font-mono text-crypto-text">
-                        {result.hedgeRatio.toFixed(3)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <SignalBadge signal={result.signal} strength={result.signalStrength} />
-                      </TableCell>
-                      <TableCell>
-                        <Link
-                          href={`/compare?asset1=${result.pair[0]}&asset2=${result.pair[1]}`}
-                          className="text-crypto-accent hover:underline text-sm"
-                        >
-                          Analyze
-                        </Link>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
