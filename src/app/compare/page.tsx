@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useCryptoList } from "@/hooks/useCryptoData";
-import { useCryptoComparePriceHistory, isCryptoCompareSupported } from "@/hooks/useCryptoCompareData";
+import { useFuturesSymbols, useFuturesPriceHistory, isFuturesSupported } from "@/hooks/useFuturesData";
+import { CryptoLogo } from "@/components/crypto/CryptoLogo";
 import {
   LineChart,
   Line,
@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Image from "next/image";
 import { TrendingUp, TrendingDown, Activity, GitMerge, Target, AlertTriangle, FlaskConical, Clock, CheckCircle2, XCircle, Zap } from "lucide-react";
 
 // Import cointegration tests
@@ -124,18 +123,18 @@ const calculateReturns = (prices: number[]): number[] => {
 };
 
 export default function ComparePage() {
-  const [asset1, setAsset1] = useState("bitcoin");
-  const [asset2, setAsset2] = useState("ethereum");
+  const [asset1, setAsset1] = useState("BTC");
+  const [asset2, setAsset2] = useState("ETH");
   const [days, setDays] = useState(180); // 180d provides sufficient samples for robust ADF testing
   const [spreadType, setSpreadType] = useState<"ratio" | "diff">("ratio");
 
-  const { data: cryptoList } = useCryptoList(50);
-  const { data: prices1, isLoading: loading1 } = useCryptoComparePriceHistory(asset1, days);
-  const { data: prices2, isLoading: loading2 } = useCryptoComparePriceHistory(asset2, days);
+  const { data: futuresSymbols } = useFuturesSymbols();
+  const { data: prices1, isLoading: loading1 } = useFuturesPriceHistory(asset1, days, "1d");
+  const { data: prices2, isLoading: loading2 } = useFuturesPriceHistory(asset2, days, "1d");
 
-  const supportedCryptos = cryptoList?.filter(c => isCryptoCompareSupported(c.id));
-  const crypto1 = cryptoList?.find(c => c.id === asset1);
-  const crypto2 = cryptoList?.find(c => c.id === asset2);
+  const supportedCryptos = futuresSymbols?.symbols || [];
+  const crypto1 = supportedCryptos.find(s => s.baseAsset === asset1);
+  const crypto2 = supportedCryptos.find(s => s.baseAsset === asset2);
 
   const isLoading = loading1 || loading2;
 
@@ -330,7 +329,7 @@ export default function ComparePage() {
         <div>
           <h1 className="text-2xl font-bold text-crypto-text">Pairs Trading Analysis</h1>
           <p className="text-crypto-muted mt-1">
-            Statistical arbitrage signals and spread analysis
+            Statistical arbitrage signals and spread analysis (Binance Futures)
           </p>
         </div>
 
@@ -340,11 +339,11 @@ export default function ComparePage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-crypto-card border-crypto-border">
-              {supportedCryptos?.map((crypto) => (
-                <SelectItem key={crypto.id} value={crypto.id} className="text-crypto-text hover:bg-crypto-border">
+              {supportedCryptos.map((symbol) => (
+                <SelectItem key={symbol.baseAsset} value={symbol.baseAsset} className="text-crypto-text hover:bg-crypto-border">
                   <div className="flex items-center gap-2">
-                    <Image src={crypto.image} alt={crypto.name} width={16} height={16} className="rounded-full" />
-                    {crypto.symbol.toUpperCase()}
+                    <CryptoLogo symbol={symbol.baseAsset} size={16} />
+                    {symbol.baseAsset}
                   </div>
                 </SelectItem>
               ))}
@@ -358,11 +357,11 @@ export default function ComparePage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-crypto-card border-crypto-border">
-              {supportedCryptos?.map((crypto) => (
-                <SelectItem key={crypto.id} value={crypto.id} className="text-crypto-text hover:bg-crypto-border">
+              {supportedCryptos.map((symbol) => (
+                <SelectItem key={symbol.baseAsset} value={symbol.baseAsset} className="text-crypto-text hover:bg-crypto-border">
                   <div className="flex items-center gap-2">
-                    <Image src={crypto.image} alt={crypto.name} width={16} height={16} className="rounded-full" />
-                    {crypto.symbol.toUpperCase()}
+                    <CryptoLogo symbol={symbol.baseAsset} size={16} />
+                    {symbol.baseAsset}
                   </div>
                 </SelectItem>
               ))}
@@ -418,8 +417,8 @@ export default function ComparePage() {
                   {analysis.signal === "neutral"
                     ? "No Signal - Spread within normal range"
                     : analysis.signal === "long_1_short_2"
-                      ? `Long ${crypto1?.symbol.toUpperCase()} / Short ${crypto2?.symbol.toUpperCase()}`
-                      : `Short ${crypto1?.symbol.toUpperCase()} / Long ${crypto2?.symbol.toUpperCase()}`
+                      ? `Long ${crypto1?.baseAsset} / Short ${crypto2?.baseAsset}`
+                      : `Short ${crypto1?.baseAsset} / Long ${crypto2?.baseAsset}`
                   }
                 </p>
                 <p className="text-sm text-crypto-muted">
@@ -507,7 +506,7 @@ export default function ComparePage() {
             {analysis?.hedgeRatio?.toFixed(3) || "—"}
           </p>
           <p className="text-xs text-crypto-muted mt-1">
-            1 {crypto1?.symbol.toUpperCase()} = {analysis?.hedgeRatio?.toFixed(3)} {crypto2?.symbol.toUpperCase()}
+            1 {crypto1?.baseAsset} = {analysis?.hedgeRatio?.toFixed(3)} {crypto2?.baseAsset}
           </p>
         </div>
 
@@ -528,7 +527,7 @@ export default function ComparePage() {
             analysis?.signal === "short_1_long_2" ? "text-red-500" : "text-crypto-muted"
           )}>
             {analysis?.signal === "neutral" ? "Neutral" :
-             analysis?.signal === "long_1_short_2" ? `Long ${crypto1?.symbol.toUpperCase()}` : `Short ${crypto1?.symbol.toUpperCase()}`}
+             analysis?.signal === "long_1_short_2" ? `Long ${crypto1?.baseAsset}` : `Short ${crypto1?.baseAsset}`}
           </p>
           <p className="text-xs text-crypto-muted mt-1">
             {analysis?.signalStrength || "—"} signal
@@ -608,7 +607,7 @@ export default function ComparePage() {
               <div className="flex items-center gap-2 mb-2">
                 <Activity className="w-4 h-4 text-crypto-muted" />
                 <span className="text-sm font-medium text-crypto-text">
-                  ADF {crypto1?.symbol.toUpperCase()}
+                  ADF {crypto1?.baseAsset}
                 </span>
               </div>
               <p className={cn(
@@ -635,7 +634,7 @@ export default function ComparePage() {
               <div className="flex items-center gap-2 mb-2">
                 <Activity className="w-4 h-4 text-crypto-muted" />
                 <span className="text-sm font-medium text-crypto-text">
-                  ADF {crypto2?.symbol.toUpperCase()}
+                  ADF {crypto2?.baseAsset}
                 </span>
               </div>
               <p className={cn(
@@ -1049,15 +1048,15 @@ export default function ComparePage() {
         <h3 className="font-semibold text-crypto-text text-lg mb-4">Pairs Trading Rules</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-            <p className="font-semibold text-green-500 mb-2">Entry Long {crypto1?.symbol.toUpperCase()}</p>
+            <p className="font-semibold text-green-500 mb-2">Entry Long {crypto1?.baseAsset}</p>
             <p className="text-crypto-muted">
-              Z-Score &lt; -2 → Long {crypto1?.symbol.toUpperCase()}, Short {analysis?.hedgeRatio?.toFixed(2)} {crypto2?.symbol.toUpperCase()}
+              Z-Score &lt; -2 → Long {crypto1?.baseAsset}, Short {analysis?.hedgeRatio?.toFixed(2)} {crypto2?.baseAsset}
             </p>
           </div>
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-            <p className="font-semibold text-red-500 mb-2">Entry Short {crypto1?.symbol.toUpperCase()}</p>
+            <p className="font-semibold text-red-500 mb-2">Entry Short {crypto1?.baseAsset}</p>
             <p className="text-crypto-muted">
-              Z-Score &gt; 2 → Short {crypto1?.symbol.toUpperCase()}, Long {analysis?.hedgeRatio?.toFixed(2)} {crypto2?.symbol.toUpperCase()}
+              Z-Score &gt; 2 → Short {crypto1?.baseAsset}, Long {analysis?.hedgeRatio?.toFixed(2)} {crypto2?.baseAsset}
             </p>
           </div>
           <div className="bg-crypto-bg border border-crypto-border rounded-lg p-4">
