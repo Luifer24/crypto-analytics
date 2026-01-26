@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Database, Calendar, Clock, TrendingUp } from "lucide-react";
+import { CryptoLogo } from "@/components/crypto/CryptoLogo";
 import {
   Table,
   TableBody,
@@ -129,8 +130,11 @@ export default function DatabasePage() {
               <TableBody>
                 {data.symbols.map((symbol) => (
                   <TableRow key={symbol.symbol} className="border-crypto-border hover:bg-crypto-bg/50">
-                    <TableCell className="font-medium text-crypto-text font-mono">
-                      {symbol.baseAsset}
+                    <TableCell className="font-medium text-crypto-text">
+                      <div className="flex items-center gap-3">
+                        <CryptoLogo symbol={symbol.baseAsset} size={32} />
+                        <span className="font-mono">{symbol.baseAsset}</span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 flex-wrap">

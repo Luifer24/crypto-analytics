@@ -23,6 +23,11 @@ const nextConfig: NextConfig = {
         hostname: "ui-avatars.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "assets.coincap.io",
+        pathname: "/**",
+      },
     ],
   },
 };
