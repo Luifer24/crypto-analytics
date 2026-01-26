@@ -16,6 +16,7 @@ import {
   Search,
   LineChart,
   DollarSign,
+  Database,
 } from "lucide-react";
 
 const navItems = [
@@ -25,6 +26,7 @@ const navItems = [
   { icon: Gauge, label: "Signals", path: "/signals" },
   { icon: ArrowLeftRight, label: "Compare", path: "/compare" },
   { icon: Search, label: "Scanner", path: "/scanner" },
+  { icon: Database, label: "Database", path: "/database" },
   { icon: LineChart, label: "Backtest", path: "/backtest" },
   { icon: Star, label: "Watchlist", path: "/watchlist" },
   { icon: FlaskConical, label: "Analysis", path: "/analysis" },
