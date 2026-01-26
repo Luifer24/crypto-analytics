@@ -110,6 +110,7 @@ export default function ScannerPage() {
   const [showOnlyCointegrated, setShowOnlyCointegrated] = useState(false);
   const [showOnlySignals, setShowOnlySignals] = useState(false);
   const [sortBy, setSortBy] = useState<"score" | "pValue" | "halfLife" | "zScore" | "funding">("score");
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Run the appropriate scanner (with built-in caching)
   const spotScanner = useLocalPairScanner({
@@ -137,6 +138,14 @@ export default function ScannerPage() {
   // Apply UI filters and sorting
   const displayResults = useMemo(() => {
     let results = (allResults || []) as (PairScanResult | FuturesPairScanResult)[];
+
+    // Filter by search term (search in both symbols)
+    if (searchTerm) {
+      const search = searchTerm.toUpperCase();
+      results = results.filter(r =>
+        r.symbols[0].includes(search) || r.symbols[1].includes(search)
+      );
+    }
 
     if (showOnlyCointegrated) {
       results = results.filter(r => r.isCointegrated);
@@ -170,7 +179,7 @@ export default function ScannerPage() {
     });
 
     return results;
-  }, [allResults, showOnlyCointegrated, showOnlySignals, sortBy, dataSource]);
+  }, [allResults, showOnlyCointegrated, showOnlySignals, sortBy, dataSource, searchTerm]);
 
   // Summary stats
   const summary = dataSource === "futures"
@@ -249,6 +258,26 @@ export default function ScannerPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Search input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-crypto-muted" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search symbol..."
+              className="pl-9 pr-3 py-1.5 w-40 bg-crypto-bg border border-crypto-border rounded text-crypto-text text-sm placeholder:text-crypto-muted focus:outline-none focus:ring-1 focus:ring-crypto-accent"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-crypto-muted hover:text-crypto-text"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            )}
+          </div>
 
           {/* Refresh button */}
           <button
@@ -414,7 +443,8 @@ export default function ScannerPage() {
             </Select>
 
             <span className="text-sm text-crypto-muted ml-auto">
-              Showing {displayResults.length} pairs
+              Showing {displayResults.length} {searchTerm && `of ${allResults.length}`} pairs
+              {searchTerm && <span className="text-crypto-accent ml-1">({searchTerm})</span>}
             </span>
           </div>
 
