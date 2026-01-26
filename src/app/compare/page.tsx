@@ -125,12 +125,13 @@ const calculateReturns = (prices: number[]): number[] => {
 export default function ComparePage() {
   const [asset1, setAsset1] = useState("BTC");
   const [asset2, setAsset2] = useState("ETH");
-  const [days, setDays] = useState(180); // 180d provides sufficient samples for robust ADF testing
+  const [days, setDays] = useState(90); // Default 90d to match Scanner
+  const [interval, setInterval] = useState<"5m" | "15m" | "1h" | "4h" | "1d">("15m"); // Default 15m to match Scanner
   const [spreadType, setSpreadType] = useState<"ratio" | "diff">("ratio");
 
   const { data: futuresSymbols } = useFuturesSymbols();
-  const { data: prices1, isLoading: loading1 } = useFuturesPriceHistory(asset1, days, "1d");
-  const { data: prices2, isLoading: loading2 } = useFuturesPriceHistory(asset2, days, "1d");
+  const { data: prices1, isLoading: loading1 } = useFuturesPriceHistory(asset1, days, interval);
+  const { data: prices2, isLoading: loading2 } = useFuturesPriceHistory(asset2, days, interval);
 
   const supportedCryptos = futuresSymbols?.symbols || [];
   const crypto1 = supportedCryptos.find(s => s.baseAsset === asset1);
@@ -329,7 +330,10 @@ export default function ComparePage() {
         <div>
           <h1 className="text-2xl font-bold text-crypto-text">Pairs Trading Analysis</h1>
           <p className="text-crypto-muted mt-1">
-            Statistical arbitrage signals and spread analysis (Binance Futures)
+            Statistical arbitrage signals • Binance Futures • Interval & lookback configurable
+          </p>
+          <p className="text-xs text-crypto-muted mt-0.5">
+            ⚠️ Cointegration may change with different intervals/periods - shorter windows capture recent regime
           </p>
         </div>
 
@@ -368,25 +372,52 @@ export default function ComparePage() {
             </SelectContent>
           </Select>
 
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1 bg-crypto-bg rounded-lg p-1">
-              {timeRanges.map((range) => (
-                <button
-                  key={range.days}
-                  onClick={() => setDays(range.days)}
-                  className={cn(
-                    "px-3 py-1 text-sm font-medium rounded transition-colors",
-                    days === range.days
-                      ? "bg-crypto-accent text-crypto-bg"
-                      : "text-crypto-muted hover:text-crypto-text"
-                  )}
-                >
-                  {range.label}
-                </button>
-              ))}
+          <div className="flex flex-col gap-2">
+            {/* Interval Selector */}
+            <div>
+              <p className="text-xs text-crypto-muted mb-1">Interval</p>
+              <div className="flex items-center gap-1 bg-crypto-bg rounded-lg p-1">
+                {(["5m", "15m", "1h", "4h", "1d"] as const).map((i) => (
+                  <button
+                    key={i}
+                    onClick={() => setInterval(i)}
+                    className={cn(
+                      "px-2 py-1 text-xs font-medium rounded transition-colors",
+                      interval === i
+                        ? "bg-crypto-accent text-crypto-bg"
+                        : "text-crypto-muted hover:text-crypto-text"
+                    )}
+                  >
+                    {i}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Time Range Selector */}
+            <div>
+              <p className="text-xs text-crypto-muted mb-1">Lookback Period</p>
+              <div className="flex items-center gap-1 bg-crypto-bg rounded-lg p-1">
+                {timeRanges.map((range) => (
+                  <button
+                    key={range.days}
+                    onClick={() => setDays(range.days)}
+                    className={cn(
+                      "px-3 py-1 text-sm font-medium rounded transition-colors",
+                      days === range.days
+                        ? "bg-crypto-accent text-crypto-bg"
+                        : "text-crypto-muted hover:text-crypto-text"
+                    )}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Data Points Info */}
             <p className="text-xs text-crypto-muted text-right">
-              More data = more robust statistical tests (ADF needs 100+ samples)
+              {prices1?.length || 0} data points • {interval} interval
             </p>
           </div>
         </div>
@@ -459,8 +490,23 @@ export default function ComparePage() {
         </div>
       )}
 
+      {/* Data Quality Warning */}
+      {alignedData && alignedData.length < 100 && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-yellow-500" />
+            <div>
+              <p className="font-semibold text-yellow-500">Limited Data Points ({alignedData.length})</p>
+              <p className="text-sm text-crypto-muted mt-1">
+                ADF tests need 100+ observations for robust results. Consider using a longer period or shorter interval (e.g., 90d + 15m = 8,640 points).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-crypto-card rounded-lg border border-crypto-border p-4">
           <div className="flex items-center gap-2 text-crypto-muted text-sm mb-2">
             <Target className="w-4 h-4" />
@@ -531,6 +577,31 @@ export default function ComparePage() {
           </p>
           <p className="text-xs text-crypto-muted mt-1">
             {analysis?.signalStrength || "—"} signal
+          </p>
+        </div>
+
+        <div className={cn(
+          "bg-crypto-card rounded-lg border p-4",
+          (alignedData?.length || 0) >= 100
+            ? "border-green-500/30"
+            : (alignedData?.length || 0) >= 50
+              ? "border-yellow-500/30"
+              : "border-red-500/30"
+        )}>
+          <div className="flex items-center gap-2 text-crypto-muted text-sm mb-2">
+            <Clock className="w-4 h-4" />
+            Data Points
+          </div>
+          <p className={cn(
+            "text-2xl font-bold font-mono",
+            (alignedData?.length || 0) >= 100 ? "text-green-500" :
+            (alignedData?.length || 0) >= 50 ? "text-yellow-500" : "text-red-500"
+          )}>
+            {alignedData?.length.toLocaleString() || "—"}
+          </p>
+          <p className="text-xs text-crypto-muted mt-1">
+            {(alignedData?.length || 0) >= 100 ? "Robust" :
+             (alignedData?.length || 0) >= 50 ? "Adequate" : "Limited"}
           </p>
         </div>
       </div>
