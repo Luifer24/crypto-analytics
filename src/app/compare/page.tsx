@@ -181,7 +181,7 @@ export default function ComparePage() {
     const egTest = engleGrangerTest(p1, p2);
 
     // Calculate half-life from the cointegrating residuals (spread)
-    const halfLifeResult = calculateHalfLife(egTest.residuals);
+    const halfLifeResult = calculateHalfLife(egTest.residuals, interval);
     const tradingFrequency = assessTradingFrequency(halfLifeResult.halfLife);
 
     // Use formal hedge ratio from Engle-Granger

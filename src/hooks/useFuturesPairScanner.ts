@@ -280,7 +280,7 @@ async function fetchFuturesScannerData(
       if (Math.abs(correlation) < config.minCorrelation) continue;
 
       const cointegrationResult = engleGrangerTest(p1, p2);
-      const halfLifeResult = calculateHalfLife(cointegrationResult.residuals);
+      const halfLifeResult = calculateHalfLife(cointegrationResult.residuals, config.interval);
       const zScoreResult = calculateSpreadZScore(cointegrationResult.residuals, 20);
       const signalResult = generateSignal(zScoreResult.currentZScore, 2, 0);
 

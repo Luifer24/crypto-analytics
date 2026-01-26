@@ -32,6 +32,21 @@ function mean(values: number[]): number {
 }
 
 /**
+ * Get conversion factor from intervals to days
+ */
+function getPeriodsPerDay(interval?: string): number {
+  const periodsPerDay: Record<string, number> = {
+    "5m": 288,   // 24h × 60min / 5min
+    "15m": 96,   // 24h × 60min / 15min
+    "1h": 24,    // 24 hours
+    "4h": 6,     // 24h / 4h
+    "1d": 1,     // 1 day
+  };
+
+  return periodsPerDay[interval || "1d"] || 1;
+}
+
+/**
  * Calculate half-life using AR(1) regression
  *
  * Model: ΔS_t = α + β * S_{t-1} + ε_t
@@ -45,10 +60,14 @@ function mean(values: number[]): number {
  * For mean reversion, β should be negative (so φ < 1)
  * Half-life = -ln(2) / ln(φ) = -ln(2) / ln(1 + β)
  *
+ * IMPORTANT: The returned half-life is in DAYS, not periods.
+ * We convert from periods to days using the interval parameter.
+ *
  * @param spread - Spread series (should be stationary/mean-reverting)
- * @returns Half-life result
+ * @param interval - Time interval of data points ("5m", "15m", "1h", "4h", "1d")
+ * @returns Half-life result in DAYS
  */
-export function calculateHalfLife(spread: number[]): HalfLifeResult {
+export function calculateHalfLife(spread: number[], interval?: string): HalfLifeResult {
   const defaultResult: HalfLifeResult = {
     halfLife: Infinity,
     theta: 0,
@@ -128,8 +147,12 @@ export function calculateHalfLife(spread: number[]): HalfLifeResult {
     };
   }
 
-  // Half-life = -ln(2) / ln(φ)
-  const halfLife = -Math.log(2) / Math.log(phi);
+  // Half-life in periods = -ln(2) / ln(φ)
+  const halfLifePeriods = -Math.log(2) / Math.log(phi);
+
+  // Convert to days based on interval
+  const periodsPerDay = getPeriodsPerDay(interval);
+  const halfLife = halfLifePeriods / periodsPerDay;
 
   // Mean reversion speed (theta in OU process)
   // For discrete time with dt=1: theta ≈ -ln(φ) = -ln(1 + β)
@@ -157,10 +180,13 @@ export function calculateHalfLife(spread: number[]): HalfLifeResult {
  * Regress: ΔS = a + bS_{t-1}
  * Then: θ = -b, μ = a/θ = -a/b
  *
+ * IMPORTANT: The returned half-life is in DAYS, not periods.
+ *
  * @param spread - Spread series
- * @returns OU parameters
+ * @param interval - Time interval of data points
+ * @returns OU parameters with half-life in DAYS
  */
-export function estimateOUParameters(spread: number[]): {
+export function estimateOUParameters(spread: number[], interval?: string): {
   mu: number;      // Long-run mean
   theta: number;   // Mean reversion speed
   sigma: number;   // Volatility
@@ -233,8 +259,12 @@ export function estimateOUParameters(spread: number[]): {
   }
   const sigma = Math.sqrt(ssRes / (n - 2));
 
-  // Half-life = ln(2) / theta
-  const halfLife = Math.log(2) / theta;
+  // Half-life in periods = ln(2) / theta
+  const halfLifePeriods = Math.log(2) / theta;
+
+  // Convert to days based on interval
+  const periodsPerDay = getPeriodsPerDay(interval);
+  const halfLife = halfLifePeriods / periodsPerDay;
 
   // Tradeable range
   const isTradeable = halfLife > 1 && halfLife < 100;
