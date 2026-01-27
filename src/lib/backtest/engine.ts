@@ -252,7 +252,7 @@ export function runBacktest(
           entryPrice2: p2,
           hedgeRatio: currentHedgeRatio,
         };
-        previousEquity = currentEquity;
+        // Don't reset previousEquity here - let it update at end of bar
       }
       // Short spread entry: Z > threshold (spread is expensive)
       else if (zScore > cfg.entryThreshold) {
@@ -265,13 +265,16 @@ export function runBacktest(
           entryPrice2: p2,
           hedgeRatio: currentHedgeRatio,
         };
-        previousEquity = currentEquity;
+        // Don't reset previousEquity here - let it update at end of bar
       }
     }
 
-    // Calculate daily return
-    const dailyReturn = previousEquity > 0 ? (currentEquity / previousEquity) - 1 : 0;
-    dailyReturns.push(dailyReturn);
+    // Calculate bar return (return for this time period)
+    // This is used for Sharpe ratio and other metrics
+    const barReturn = previousEquity > 0 ? (currentEquity / previousEquity) - 1 : 0;
+    dailyReturns.push(barReturn);
+
+    // Update baseline equity for next bar
     previousEquity = currentEquity;
   }
 

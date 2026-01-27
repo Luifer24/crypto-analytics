@@ -246,6 +246,15 @@ export function simulatePairExit(
 
 /**
  * Calculate pair trade PnL
+ *
+ * IMPORTANT: PnL is normalized by position weights to avoid amplification effects.
+ * Each leg contributes proportionally to total capital at risk.
+ *
+ * For example, if hedgeRatio = 5.0:
+ * - Asset1 weight: 1/(1+5) = 16.7%
+ * - Asset2 weight: 5/(1+5) = 83.3%
+ *
+ * This prevents small price differences from causing massive PnL swings.
  */
 export function calculatePairTradePnl(
   entryPrice1: number,
@@ -255,15 +264,19 @@ export function calculatePairTradePnl(
   hedgeRatio: number,
   isLongSpread: boolean
 ): number {
-  // Long spread PnL: (exit1/entry1 - 1) - hedgeRatio * (exit2/entry2 - 1)
-  // Short spread PnL: hedgeRatio * (exit2/entry2 - 1) - (exit1/entry1 - 1)
-
   const return1 = (exitPrice1 - entryPrice1) / entryPrice1;
   const return2 = (exitPrice2 - entryPrice2) / entryPrice2;
 
+  // Normalize by position weights (beta-neutral with equal risk contribution)
+  const absHedgeRatio = Math.abs(hedgeRatio);
+  const weight1 = 1 / (1 + absHedgeRatio);
+  const weight2 = absHedgeRatio / (1 + absHedgeRatio);
+
+  // Long spread: profit when spread widens (asset1 outperforms asset2)
+  // Short spread: profit when spread narrows (asset2 outperforms asset1)
   if (isLongSpread) {
-    return return1 - hedgeRatio * return2;
+    return weight1 * return1 - weight2 * return2;
   } else {
-    return hedgeRatio * return2 - return1;
+    return weight2 * return2 - weight1 * return1;
   }
 }
