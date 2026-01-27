@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useBacktest, formatTrade, type DataSource } from "@/hooks/useBacktest";
+import { useFuturesSymbols } from "@/hooks/useFuturesData";
 import type { BacktestConfig } from "@/types/arbitrage";
 import { cn } from "@/lib/utils";
 import {
@@ -45,11 +46,6 @@ import {
 // ============================================================================
 // Constants
 // ============================================================================
-
-const SYMBOLS = [
-  "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "LINK", "AVAX",
-  "MATIC", "LTC", "UNI", "ATOM", "ETC", "FIL", "APT", "ARB", "OP", "NEAR",
-];
 
 const LOOKBACK_OPTIONS = [
   { label: "30 Days", value: 30 },
@@ -100,12 +96,16 @@ function MetricCard({
 // ============================================================================
 
 export default function BacktestPage() {
+  // Load available symbols from Futures data
+  const { data: futuresSymbols = [], isLoading: loadingSymbols } = useFuturesSymbols();
+  const symbols = futuresSymbols.map((s) => s.baseAsset).sort();
+
   // Form state
   const [symbol1, setSymbol1] = useState("BTC");
   const [symbol2, setSymbol2] = useState("ETH");
   const [lookbackDays, setLookbackDays] = useState(90);
   const [dataSource, setDataSource] = useState<DataSource>("futures");
-  const [interval, setInterval] = useState<"5m" | "15m" | "1h" | "4h" | "1d">("1d");
+  const [interval, setInterval] = useState<"5m" | "15m" | "1h" | "4h" | "1d">("15m");
 
   // Config state
   const [entryThreshold, setEntryThreshold] = useState(2.0);
@@ -211,12 +211,12 @@ export default function BacktestPage() {
           {/* Asset 1 */}
           <div>
             <label className="text-sm text-crypto-muted mb-2 block">Asset 1</label>
-            <Select value={symbol1} onValueChange={setSymbol1}>
+            <Select value={symbol1} onValueChange={setSymbol1} disabled={loadingSymbols}>
               <SelectTrigger className="bg-crypto-bg border-crypto-border text-crypto-text">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-crypto-card border-crypto-border">
-                {SYMBOLS.map((s) => (
+                {symbols.map((s) => (
                   <SelectItem key={s} value={s} className="text-crypto-text">
                     {s}
                   </SelectItem>
@@ -228,12 +228,12 @@ export default function BacktestPage() {
           {/* Asset 2 */}
           <div>
             <label className="text-sm text-crypto-muted mb-2 block">Asset 2</label>
-            <Select value={symbol2} onValueChange={setSymbol2}>
+            <Select value={symbol2} onValueChange={setSymbol2} disabled={loadingSymbols}>
               <SelectTrigger className="bg-crypto-bg border-crypto-border text-crypto-text">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-crypto-card border-crypto-border">
-                {SYMBOLS.filter(s => s !== symbol1).map((s) => (
+                {symbols.filter(s => s !== symbol1).map((s) => (
                   <SelectItem key={s} value={s} className="text-crypto-text">
                     {s}
                   </SelectItem>
