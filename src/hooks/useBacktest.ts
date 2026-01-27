@@ -70,23 +70,17 @@ async function fetchFuturesPrices(
   const data = await res.json();
   const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
 
-  // Filter by interval and time, then resample to daily for backtest
+  // Filter by interval and time
   const filtered: FuturesPriceData[] = data.data.filter(
     (p: FuturesPriceData) => p.t >= cutoff && p.i === interval
   );
 
-  // Resample to daily (take last close of each day)
-  const dailyMap = new Map<string, { price: number; timestamp: number }>();
-  for (const p of filtered) {
-    const date = new Date(p.t).toISOString().split("T")[0];
-    dailyMap.set(date, { price: p.c, timestamp: p.t });
-  }
-
-  const sorted = Array.from(dailyMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  // Sort by timestamp
+  const sorted = filtered.sort((a, b) => a.t - b.t);
 
   return {
-    prices: sorted.map(([, v]) => v.price),
-    timestamps: sorted.map(([, v]) => v.timestamp),
+    prices: sorted.map((p) => p.c),
+    timestamps: sorted.map((p) => p.t),
   };
 }
 
