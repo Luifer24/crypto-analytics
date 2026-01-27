@@ -97,8 +97,8 @@ function MetricCard({
 
 export default function BacktestPage() {
   // Load available symbols from Futures data
-  const { data: futuresSymbols = [], isLoading: loadingSymbols } = useFuturesSymbols();
-  const symbols = futuresSymbols.map((s) => s.baseAsset).sort();
+  const { data: futuresData, isLoading: loadingSymbols } = useFuturesSymbols();
+  const symbols = futuresData?.symbols?.map((s) => s.baseAsset).sort() || [];
 
   // Form state
   const [symbol1, setSymbol1] = useState("BTC");
