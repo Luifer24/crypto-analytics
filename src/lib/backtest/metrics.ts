@@ -18,6 +18,37 @@ const TRADING_DAYS_PER_YEAR = 252;
 const RISK_FREE_RATE = 0.04; // 4%
 
 // ============================================================================
+// Bar Interval Helpers
+// ============================================================================
+
+/**
+ * Convert bar interval to number of bars per trading day
+ * Assumes 24-hour markets (crypto)
+ */
+function getBarsPerDay(interval: '1min' | '5min' | '15min' | '30min' | '1h' | '4h' | '1d'): number {
+  const minutesPerDay = 24 * 60; // 1440 minutes in 24 hours
+
+  switch (interval) {
+    case '1min':
+      return minutesPerDay / 1; // 1440 bars/day
+    case '5min':
+      return minutesPerDay / 5; // 288 bars/day
+    case '15min':
+      return minutesPerDay / 15; // 96 bars/day
+    case '30min':
+      return minutesPerDay / 30; // 48 bars/day
+    case '1h':
+      return 24; // 24 bars/day
+    case '4h':
+      return 6; // 6 bars/day
+    case '1d':
+      return 1; // 1 bar/day
+    default:
+      return 1;
+  }
+}
+
+// ============================================================================
 // Basic Statistics
 // ============================================================================
 
@@ -62,8 +93,14 @@ export function calculateAnnualizedReturn(totalReturn: number, days: number): nu
  * Calculate Sharpe Ratio (annualized) for discrete trading strategies
  *
  * Uses trade PnL directly, annualized based on holding period
+ *
+ * @param trades - Array of trades
+ * @param barInterval - Bar interval (e.g., '15min', '1h', '1d')
  */
-export function calculateSharpe(trades: Trade[]): number {
+export function calculateSharpe(
+  trades: Trade[],
+  barInterval: '1min' | '5min' | '15min' | '30min' | '1h' | '4h' | '1d' = '1d'
+): number {
   if (trades.length < 2) return 0;
 
   // Extract trade PnLs
@@ -79,8 +116,13 @@ export function calculateSharpe(trades: Trade[]): number {
 
   if (avgHoldingPeriod === 0) return 0;
 
-  // Number of trades per year (assuming bars are daily)
-  const tradesPerYear = TRADING_DAYS_PER_YEAR / avgHoldingPeriod;
+  // CRITICAL FIX: Account for intraday bars
+  // For 15min bars: 96 bars/day, for 1h bars: 24 bars/day, etc.
+  const barsPerDay = getBarsPerDay(barInterval);
+  const barsPerYear = TRADING_DAYS_PER_YEAR * barsPerDay;
+
+  // Number of trades per year
+  const tradesPerYear = barsPerYear / avgHoldingPeriod;
 
   // Annualized metrics
   const annualizedReturn = avgTradePnl * tradesPerYear;
@@ -89,6 +131,8 @@ export function calculateSharpe(trades: Trade[]): number {
   // Debug logging (only for first calculation)
   if (trades.length > 50) {
     console.log("[Sharpe Debug]:", {
+      barInterval,
+      barsPerDay,
       numTrades: trades.length,
       avgTradePnl: (avgTradePnl * 100).toFixed(3) + '%',
       stdTradePnl: (stdTradePnl * 100).toFixed(3) + '%',
@@ -107,8 +151,14 @@ export function calculateSharpe(trades: Trade[]): number {
 /**
  * Calculate Sortino Ratio (annualized) for discrete trading strategies
  * Uses only downside deviation (penalizes only losing trades)
+ *
+ * @param trades - Array of trades
+ * @param barInterval - Bar interval (e.g., '15min', '1h', '1d')
  */
-export function calculateSortino(trades: Trade[]): number {
+export function calculateSortino(
+  trades: Trade[],
+  barInterval: '1min' | '5min' | '15min' | '30min' | '1h' | '4h' | '1d' = '1d'
+): number {
   if (trades.length < 2) return 0;
 
   // Extract trade PnLs
@@ -126,8 +176,12 @@ export function calculateSortino(trades: Trade[]): number {
 
   if (avgHoldingPeriod === 0) return 0;
 
+  // CRITICAL FIX: Account for intraday bars
+  const barsPerDay = getBarsPerDay(barInterval);
+  const barsPerYear = TRADING_DAYS_PER_YEAR * barsPerDay;
+
   // Number of trades per year
-  const tradesPerYear = TRADING_DAYS_PER_YEAR / avgHoldingPeriod;
+  const tradesPerYear = barsPerYear / avgHoldingPeriod;
 
   // Annualized metrics
   const annualizedReturn = avgTradePnl * tradesPerYear;
@@ -238,10 +292,15 @@ export function calculateAvgHoldingPeriod(trades: Trade[]): number {
 
 /**
  * Calculate all backtest metrics from trades and daily returns
+ *
+ * @param trades - Array of executed trades
+ * @param dailyReturns - Daily returns series
+ * @param barInterval - Bar interval for proper annualization
  */
 export function calculateBacktestMetrics(
   trades: Trade[],
-  dailyReturns: number[]
+  dailyReturns: number[],
+  barInterval: '1min' | '5min' | '15min' | '30min' | '1h' | '4h' | '1d' = '1d'
 ): BacktestMetrics {
   const equity = calculateEquityCurve(dailyReturns);
   const totalReturn = calculateCumulativeReturn(dailyReturns);
@@ -253,8 +312,8 @@ export function calculateBacktestMetrics(
   return {
     totalReturn,
     annualizedReturn,
-    sharpe: calculateSharpe(trades),  // Calculate from trade PnL
-    sortino: calculateSortino(trades),  // Calculate from trade PnL
+    sharpe: calculateSharpe(trades, barInterval),  // FIXED: Pass barInterval
+    sortino: calculateSortino(trades, barInterval),  // FIXED: Pass barInterval
     maxDrawdown: calculateMaxDrawdown(equity),
     winRate: calculateWinRate(trades),
     profitFactor: calculateProfitFactor(trades),

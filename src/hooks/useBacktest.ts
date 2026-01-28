@@ -138,8 +138,24 @@ export function useBacktest() {
           throw new Error("Insufficient data for backtest (need at least 30 data points)");
         }
 
-        // Run backtest
-        const result = runBacktest(prices1, prices2, config);
+        // Convert API interval format to barInterval format
+        // API uses "15m", "1h", etc. but BacktestConfig expects '15min', '1h', etc.
+        const barIntervalMap: Record<string, BacktestConfig['barInterval']> = {
+          '5m': '5min',
+          '15m': '15min',
+          '30m': '30min',
+          '1h': '1h',
+          '4h': '4h',
+          '1d': '1d',
+        };
+
+        const barInterval = input.interval ? barIntervalMap[input.interval] : '1d';
+
+        // Run backtest with proper barInterval for correct Sharpe calculation
+        const result = runBacktest(prices1, prices2, {
+          ...config,
+          barInterval,  // CRITICAL: Pass the correct bar interval
+        });
 
         setState({
           isLoading: false,

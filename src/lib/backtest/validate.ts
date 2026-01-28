@@ -281,11 +281,13 @@ export function testSyntheticCase(type: "mean-reverting" | "trending" | "random"
   // For synthetic tests:
   // - Force hedge ratio = 1.0 and intercept = 0 (we KNOW the true relationship)
   // - Use zero commission to isolate logic bugs
+  // - Use daily bars for synthetic tests (simple baseline)
   const result = runBacktest(prices1, prices2, {
     commissionPct: 0,
     slippageBps: 0,
     forceHedgeRatio: 1.0,
     forceIntercept: 0.0,
+    barInterval: '1d',
   });
 
   let passed = false;

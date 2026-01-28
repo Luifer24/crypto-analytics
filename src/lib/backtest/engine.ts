@@ -42,6 +42,7 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   },
   forceHedgeRatio: undefined,  // Optional: force specific hedge ratio
   forceIntercept: undefined,   // Optional: force specific intercept
+  barInterval: '1d',           // Default: daily bars (for backward compatibility)
 };
 
 // ============================================================================
@@ -360,8 +361,8 @@ export function runBacktest(
     equityCurve.push(equityCurve[equityCurve.length - 1] * (1 + r));
   }
 
-  // Calculate metrics
-  const metrics = calculateBacktestMetrics(trades, dailyReturns);
+  // Calculate metrics (with correct bar interval for annualization)
+  const metrics = calculateBacktestMetrics(trades, dailyReturns, cfg.barInterval || '1d');
 
   // Summary logging
   console.log("[Backtest] Complete:", {
