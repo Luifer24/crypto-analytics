@@ -17,6 +17,7 @@ import {
   LineChart,
   DollarSign,
   Database,
+  CheckCircle2,
 } from "lucide-react";
 
 const navItems = [
@@ -28,6 +29,7 @@ const navItems = [
   { icon: Search, label: "Scanner", path: "/scanner" },
   { icon: Database, label: "Database", path: "/database" },
   { icon: LineChart, label: "Backtest", path: "/backtest" },
+  { icon: CheckCircle2, label: "Test BT", path: "/test-backtest" },
   { icon: Star, label: "Watchlist", path: "/watchlist" },
   { icon: FlaskConical, label: "Analysis", path: "/analysis" },
   { icon: Globe, label: "Macro", path: "/macro" },

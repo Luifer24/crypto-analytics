@@ -243,6 +243,10 @@ export interface BacktestConfig {
   useDynamicHedge: boolean;
   /** Kalman filter config if using dynamic hedge */
   kalmanConfig?: KalmanConfig;
+  /** Force specific hedge ratio (for synthetic tests) */
+  forceHedgeRatio?: number;
+  /** Force specific intercept (for synthetic tests) */
+  forceIntercept?: number;
 }
 
 export interface BacktestMetrics {

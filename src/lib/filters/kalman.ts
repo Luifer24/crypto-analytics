@@ -214,6 +214,18 @@ export class KalmanFilter {
   }
 
   /**
+   * Set state manually (useful for initialization with OLS estimates)
+   */
+  setState(newState: Partial<Pick<KalmanState, 'alpha' | 'beta'>>): void {
+    if (newState.alpha !== undefined) {
+      this.state.alpha = newState.alpha;
+    }
+    if (newState.beta !== undefined) {
+      this.state.beta = newState.beta;
+    }
+  }
+
+  /**
    * Reset filter to initial state
    */
   reset(): void {

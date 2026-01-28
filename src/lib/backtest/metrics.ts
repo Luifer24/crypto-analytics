@@ -59,40 +59,82 @@ export function calculateAnnualizedReturn(totalReturn: number, days: number): nu
 }
 
 /**
- * Calculate Sharpe Ratio (annualized)
+ * Calculate Sharpe Ratio (annualized) for discrete trading strategies
+ *
+ * Uses trade PnL directly, annualized based on holding period
  */
-export function calculateSharpe(dailyReturns: number[]): number {
-  if (dailyReturns.length < 2) return 0;
+export function calculateSharpe(trades: Trade[]): number {
+  if (trades.length < 2) return 0;
 
-  const avgDailyReturn = mean(dailyReturns);
-  const dailyStd = standardDeviation(dailyReturns);
+  // Extract trade PnLs
+  const tradePnls = trades.map(t => t.pnlNet);
+  const avgTradePnl = mean(tradePnls);
+  const stdTradePnl = standardDeviation(tradePnls);
 
-  if (dailyStd === 0) return avgDailyReturn > 0 ? Infinity : 0;
+  if (stdTradePnl === 0) return avgTradePnl > 0 ? Infinity : 0;
 
-  const dailyRiskFree = RISK_FREE_RATE / TRADING_DAYS_PER_YEAR;
-  const dailySharpe = (avgDailyReturn - dailyRiskFree) / dailyStd;
+  // Average holding period (bars per trade)
+  const holdingPeriods = trades.map(t => t.holdingPeriod);
+  const avgHoldingPeriod = mean(holdingPeriods);
 
-  // Annualize
-  return dailySharpe * Math.sqrt(TRADING_DAYS_PER_YEAR);
+  if (avgHoldingPeriod === 0) return 0;
+
+  // Number of trades per year (assuming bars are daily)
+  const tradesPerYear = TRADING_DAYS_PER_YEAR / avgHoldingPeriod;
+
+  // Annualized metrics
+  const annualizedReturn = avgTradePnl * tradesPerYear;
+  const annualizedStd = stdTradePnl * Math.sqrt(tradesPerYear);
+
+  // Debug logging (only for first calculation)
+  if (trades.length > 50) {
+    console.log("[Sharpe Debug]:", {
+      numTrades: trades.length,
+      avgTradePnl: (avgTradePnl * 100).toFixed(3) + '%',
+      stdTradePnl: (stdTradePnl * 100).toFixed(3) + '%',
+      avgHoldingPeriod: avgHoldingPeriod.toFixed(1) + ' bars',
+      tradesPerYear: tradesPerYear.toFixed(1),
+      annualizedReturn: (annualizedReturn * 100).toFixed(2) + '%',
+      annualizedStd: (annualizedStd * 100).toFixed(2) + '%',
+      sharpe: ((annualizedReturn - RISK_FREE_RATE) / annualizedStd).toFixed(2),
+    });
+  }
+
+  // Sharpe ratio
+  return (annualizedReturn - RISK_FREE_RATE) / annualizedStd;
 }
 
 /**
- * Calculate Sortino Ratio (annualized)
- * Uses only downside deviation
+ * Calculate Sortino Ratio (annualized) for discrete trading strategies
+ * Uses only downside deviation (penalizes only losing trades)
  */
-export function calculateSortino(dailyReturns: number[]): number {
-  if (dailyReturns.length < 2) return 0;
+export function calculateSortino(trades: Trade[]): number {
+  if (trades.length < 2) return 0;
 
-  const avgDailyReturn = mean(dailyReturns);
-  const dailyRiskFree = RISK_FREE_RATE / TRADING_DAYS_PER_YEAR;
-  const downDev = downsideDeviation(dailyReturns, dailyRiskFree);
+  // Extract trade PnLs
+  const tradePnls = trades.map(t => t.pnlNet);
+  const avgTradePnl = mean(tradePnls);
 
-  if (downDev === 0) return avgDailyReturn > dailyRiskFree ? Infinity : 0;
+  // Calculate downside deviation (only negative returns)
+  const downDev = downsideDeviation(tradePnls, 0);
 
-  const dailySortino = (avgDailyReturn - dailyRiskFree) / downDev;
+  if (downDev === 0) return avgTradePnl > 0 ? Infinity : 0;
 
-  // Annualize
-  return dailySortino * Math.sqrt(TRADING_DAYS_PER_YEAR);
+  // Average holding period
+  const holdingPeriods = trades.map(t => t.holdingPeriod);
+  const avgHoldingPeriod = mean(holdingPeriods);
+
+  if (avgHoldingPeriod === 0) return 0;
+
+  // Number of trades per year
+  const tradesPerYear = TRADING_DAYS_PER_YEAR / avgHoldingPeriod;
+
+  // Annualized metrics
+  const annualizedReturn = avgTradePnl * tradesPerYear;
+  const annualizedDownDev = downDev * Math.sqrt(tradesPerYear);
+
+  // Sortino ratio
+  return (annualizedReturn - RISK_FREE_RATE) / annualizedDownDev;
 }
 
 // ============================================================================
@@ -211,8 +253,8 @@ export function calculateBacktestMetrics(
   return {
     totalReturn,
     annualizedReturn,
-    sharpe: calculateSharpe(dailyReturns),
-    sortino: calculateSortino(dailyReturns),
+    sharpe: calculateSharpe(trades),  // Calculate from trade PnL
+    sortino: calculateSortino(trades),  // Calculate from trade PnL
     maxDrawdown: calculateMaxDrawdown(equity),
     winRate: calculateWinRate(trades),
     profitFactor: calculateProfitFactor(trades),
@@ -233,7 +275,7 @@ export function formatMetrics(metrics: BacktestMetrics): Record<string, string> 
     "Annualized Return": `${(metrics.annualizedReturn * 100).toFixed(2)}%`,
     "Sharpe Ratio": metrics.sharpe.toFixed(2),
     "Sortino Ratio": metrics.sortino.toFixed(2),
-    "Max Drawdown": `${(metrics.maxDrawdown * 100).toFixed(2)}%`,
+    "Max Drawdown": `-${(metrics.maxDrawdown * 100).toFixed(2)}%`,  // Add negative sign
     "Win Rate": `${(metrics.winRate * 100).toFixed(1)}%`,
     "Profit Factor": metrics.profitFactor.toFixed(2),
     "Avg Trade PnL": `${(metrics.avgTradePnl * 100).toFixed(3)}%`,

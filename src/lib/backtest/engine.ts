@@ -40,6 +40,8 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
     initialP: 1,
     initialVe: 0.001,
   },
+  forceHedgeRatio: undefined,  // Optional: force specific hedge ratio
+  forceIntercept: undefined,   // Optional: force specific intercept
 };
 
 // ============================================================================
@@ -54,6 +56,7 @@ interface PositionState {
   entryPrice1: number;
   entryPrice2: number;
   hedgeRatio: number;
+  entryEquity: number;  // Equity at entry to calculate unrealized PnL correctly
 }
 
 // ============================================================================
@@ -103,31 +106,59 @@ export function runBacktest(
     entryPrice1: 0,
     entryPrice2: 0,
     hedgeRatio: 0,
+    entryEquity: 1.0,
   };
 
-  // Calculate initial hedge ratio using first lookback period
-  const egResult = engleGrangerTest(
-    prices1.slice(0, lookbackForStats),
-    prices2.slice(0, lookbackForStats)
-  );
-  let currentHedgeRatio = egResult.hedgeRatio;
+  // Calculate initial hedge ratio using FULL dataset
+  // Note: This creates look-ahead bias and is only suitable for backtesting
+  // For live trading, use rolling window or dynamic hedge (Kalman)
+  let currentHedgeRatio: number;
+  let currentIntercept: number;
+
+  if (cfg.forceHedgeRatio !== undefined && cfg.forceIntercept !== undefined) {
+    // Use forced parameters (for synthetic tests)
+    currentHedgeRatio = cfg.forceHedgeRatio;
+    currentIntercept = cfg.forceIntercept;
+    console.log("[Backtest] Using FORCED parameters (synthetic test)");
+    console.log("[Backtest] Hedge Ratio (β):", currentHedgeRatio.toFixed(4));
+    console.log("[Backtest] Intercept (α):", currentIntercept.toFixed(4));
+  } else {
+    // Calculate from data using Engle-Granger
+    const egResult = engleGrangerTest(prices1, prices2);
+    currentHedgeRatio = egResult.hedgeRatio;
+    currentIntercept = egResult.intercept;
+
+    // Log hedge ratio and intercept for debugging
+    console.log("[Backtest] Hedge Ratio (β):", currentHedgeRatio.toFixed(4));
+    console.log("[Backtest] Intercept (α):", currentIntercept.toFixed(4));
+  }
 
   // Initialize Kalman filter if using dynamic hedge
   let kalman: KalmanFilter | null = null;
   if (cfg.useDynamicHedge && cfg.kalmanConfig) {
     kalman = new KalmanFilter(cfg.kalmanConfig);
+    // Initialize with OLS estimates
+    kalman.setState({
+      alpha: currentIntercept,
+      beta: currentHedgeRatio,
+    });
     // Warm up Kalman filter
     for (let i = 0; i < Math.min(lookbackForStats, n); i++) {
       kalman.update(prices1[i], prices2[i]);
     }
+    // Update current hedge ratio and intercept from Kalman
+    const kalmanState = kalman.getState();
+    currentHedgeRatio = kalmanState.beta;
+    currentIntercept = kalmanState.alpha;
   }
 
   // Z-Score history for rolling calculation
   const spreadHistory: number[] = [];
 
   // Track equity for daily returns
-  let previousEquity = 1.0;
-  let currentEquity = 1.0;
+  // SIMPLIFIED: Only update equity when positions close, not on every bar
+  // This eliminates unrealized PnL tracking and associated bugs
+  let equity = 1.0;
 
   // Main simulation loop
   for (let i = lookbackForStats; i < n; i++) {
@@ -137,11 +168,14 @@ export function runBacktest(
     // Update hedge ratio if using Kalman
     if (kalman && cfg.useDynamicHedge) {
       kalman.update(p1, p2);
-      currentHedgeRatio = kalman.getState().beta;
+      const kalmanState = kalman.getState();
+      currentHedgeRatio = kalmanState.beta;
+      currentIntercept = kalmanState.alpha;
     }
 
-    // Calculate spread: S = P1 - beta * P2
-    const spread = p1 - currentHedgeRatio * p2;
+    // Calculate spread: S = P1 - alpha - beta * P2
+    // CRITICAL: Must include intercept α from cointegrating regression!
+    const spread = p1 - currentIntercept - currentHedgeRatio * p2;
     spreadHistory.push(spread);
 
     // Keep only recent history for Z-Score calculation
@@ -154,20 +188,6 @@ export function runBacktest(
     if (spreadHistory.length >= lookbackForStats) {
       const zResult = calculateSpreadZScore(spreadHistory, lookbackForStats);
       zScore = zResult.currentZScore;
-    }
-
-    // Track unrealized PnL if position is open
-    if (position.isOpen) {
-      const unrealizedPnl = calculatePairTradePnl(
-        position.entryPrice1,
-        position.entryPrice2,
-        p1,
-        p2,
-        position.hedgeRatio,
-        position.side === "long_spread"
-      );
-
-      currentEquity = previousEquity * (1 + unrealizedPnl);
     }
 
     // Check exit conditions
@@ -209,6 +229,23 @@ export function runBacktest(
         const roundTripCost = calculateRoundTripCosts(costs);
         const netPnl = grossPnl - roundTripCost;
 
+        // Debug logging for first 3 trades
+        if (trades.length < 3) {
+          console.log(`[Trade ${trades.length + 1}] Exit:`, {
+            side: position.side,
+            entryBar: position.entryBar,
+            exitBar: i,
+            entryZ: position.entryZScore.toFixed(2),
+            exitZ: zScore.toFixed(2),
+            entryPrices: { p1: position.entryPrice1.toFixed(2), p2: position.entryPrice2.toFixed(2) },
+            exitPrices: { p1: p1.toFixed(2), p2: p2.toFixed(2) },
+            hedgeRatio: position.hedgeRatio.toFixed(4),
+            grossPnl: (grossPnl * 100).toFixed(2) + '%',
+            netPnl: (netPnl * 100).toFixed(2) + '%',
+            exitReason,
+          });
+        }
+
         trades.push({
           entryTime: position.entryBar,
           exitTime: i,
@@ -223,8 +260,11 @@ export function runBacktest(
           exitReason,
         });
 
-        // Update equity
-        currentEquity = previousEquity * (1 + netPnl);
+        // Update equity based on net PnL
+        equity = equity * (1 + netPnl);
+
+        // Record the return on the EXIT bar (overwrite the 0 we pushed earlier)
+        dailyReturns[dailyReturns.length - 1] = netPnl;
 
         // Reset position
         position = {
@@ -235,6 +275,7 @@ export function runBacktest(
           entryPrice1: 0,
           entryPrice2: 0,
           hedgeRatio: 0,
+          entryEquity: equity,
         };
       }
     }
@@ -251,8 +292,8 @@ export function runBacktest(
           entryPrice1: p1,
           entryPrice2: p2,
           hedgeRatio: currentHedgeRatio,
+          entryEquity: equity,  // Save equity at entry
         };
-        // Don't reset previousEquity here - let it update at end of bar
       }
       // Short spread entry: Z > threshold (spread is expensive)
       else if (zScore > cfg.entryThreshold) {
@@ -264,18 +305,15 @@ export function runBacktest(
           entryPrice1: p1,
           entryPrice2: p2,
           hedgeRatio: currentHedgeRatio,
+          entryEquity: equity,  // Save equity at entry
         };
-        // Don't reset previousEquity here - let it update at end of bar
       }
     }
 
-    // Calculate bar return (return for this time period)
-    // This is used for Sharpe ratio and other metrics
-    const barReturn = previousEquity > 0 ? (currentEquity / previousEquity) - 1 : 0;
-    dailyReturns.push(barReturn);
-
-    // Update baseline equity for next bar
-    previousEquity = currentEquity;
+    // Calculate bar return
+    // IMPORTANT: We only record returns when trades close to avoid unrealized PnL issues
+    // During holding periods, return is 0
+    dailyReturns.push(0);
   }
 
   // Close any open position at end of data
@@ -308,20 +346,35 @@ export function runBacktest(
       holdingPeriod: n - 1 - position.entryBar,
       exitReason: "end_of_data",
     });
+
+    // Update equity for final trade
+    equity = equity * (1 + netPnl);
+
+    // Record the return on the final bar
+    dailyReturns[dailyReturns.length - 1] = netPnl;
   }
 
   // Build equity curve
-  const equity = [1];
+  const equityCurve = [1];
   for (const r of dailyReturns) {
-    equity.push(equity[equity.length - 1] * (1 + r));
+    equityCurve.push(equityCurve[equityCurve.length - 1] * (1 + r));
   }
 
   // Calculate metrics
   const metrics = calculateBacktestMetrics(trades, dailyReturns);
 
+  // Summary logging
+  console.log("[Backtest] Complete:", {
+    totalTrades: trades.length,
+    winRate: (metrics.winRate * 100).toFixed(1) + '%',
+    totalReturn: (metrics.totalReturn * 100).toFixed(2) + '%',
+    profitFactor: metrics.profitFactor.toFixed(2),
+    finalEquity: equity.toFixed(4),
+  });
+
   return {
     trades,
-    equity,
+    equity: equityCurve,
     metrics,
     dailyReturns,
     config: cfg,
