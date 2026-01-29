@@ -16,11 +16,46 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Play, Zap, TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import { usePythonBacktest, convertConfigToPython } from '@/hooks/usePythonBacktest';
-import { useLocalData } from '@/hooks/useLocalData';
+import { useFuturesSymbols } from '@/hooks/useFuturesData';
+
+// ============================================================================
+// Data Fetching
+// ============================================================================
+
+interface FuturesPriceData {
+  t: number;  // timestamp
+  i: string;  // interval
+  c: number;  // close price
+}
+
+async function fetchFuturesPrices(
+  symbol: string,
+  lookbackDays: number,
+  interval: string
+): Promise<{ prices: number[]; timestamps: number[] }> {
+  const res = await fetch(`/data/futures/prices/${symbol}USDT.json`);
+  if (!res.ok) throw new Error(`Failed to fetch data for ${symbol}`);
+
+  const data = await res.json();
+  const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+
+  // Filter by interval and time
+  const filtered: FuturesPriceData[] = data.data.filter(
+    (p: FuturesPriceData) => p.t >= cutoff && p.i === interval
+  );
+
+  // Sort by timestamp
+  const sorted = filtered.sort((a, b) => a.t - b.t);
+
+  return {
+    prices: sorted.map((p) => p.c),
+    timestamps: sorted.map((p) => p.t),
+  };
+}
 
 export default function Backtest2Page() {
-  // Data loading
-  const { data: futuresData, isLoading: isLoadingData } = useLocalData();
+  // Get available symbols
+  const { symbols: availableSymbols, isLoading: isLoadingSymbols } = useFuturesSymbols();
 
   // Python backtest hook
   const { runBacktest, isLoading: isRunning, error, result } = usePythonBacktest();
@@ -32,68 +67,58 @@ export default function Backtest2Page() {
   const [lookbackDays, setLookbackDays] = useState(90);
   const [lookbackHours, setLookbackHours] = useState(24);
 
-  // Get available symbols
-  const availableSymbols = futuresData
-    ? Object.keys(futuresData).filter(s => s.endsWith('USDT')).map(s => s.replace('USDT', '')).sort()
-    : [];
-
   // Handle backtest run
   const handleRunBacktest = async () => {
-    if (!futuresData) return;
+    try {
+      // Fetch data for both symbols
+      const [data1, data2] = await Promise.all([
+        fetchFuturesPrices(symbol1, lookbackDays, interval),
+        fetchFuturesPrices(symbol2, lookbackDays, interval),
+      ]);
 
-    const symbol1Data = futuresData[`${symbol1}USDT`];
-    const symbol2Data = futuresData[`${symbol2}USDT`];
+      // Align data by timestamps (keep only common timestamps)
+      const timestamps1Set = new Set(data1.timestamps);
+      const commonIndices2 = data2.timestamps.map((t, i) => timestamps1Set.has(t) ? i : -1).filter(i => i !== -1);
+      const commonIndices1 = data1.timestamps.map((t, i) => new Set(data2.timestamps).has(t) ? i : -1).filter(i => i !== -1);
 
-    if (!symbol1Data || !symbol2Data) {
-      alert('Selected symbols not found in data');
-      return;
-    }
+      const alignedPrices1 = commonIndices1.map(i => data1.prices[i]);
+      const alignedPrices2 = commonIndices2.map(i => data2.prices[i]);
+      const alignedTimestamps = commonIndices1.map(i => data1.timestamps[i]);
 
-    // Filter by interval and lookback
-    const filterData = (data: any[]) => {
-      const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
-      return data
-        .filter(d => d.interval === interval && d.timestamp >= cutoff)
-        .sort((a, b) => a.timestamp - b.timestamp);
-    };
-
-    const data1 = filterData(symbol1Data);
-    const data2 = filterData(symbol2Data);
-
-    // Align data by timestamp
-    const timestamps = data1
-      .map(d => d.timestamp)
-      .filter(t => data2.some(d2 => d2.timestamp === t))
-      .sort();
-
-    const prices1 = timestamps.map(t => data1.find(d => d.timestamp === t)!.close);
-    const prices2 = timestamps.map(t => data2.find(d => d.timestamp === t)!.close);
-
-    console.log('[Backtest2] Running with:', {
-      symbol1,
-      symbol2,
-      interval,
-      lookbackDays,
-      dataPoints: prices1.length,
-      lookbackHours,
-    });
-
-    // Run Python backtest
-    await runBacktest({
-      symbol1,
-      symbol2,
-      prices1,
-      prices2,
-      timestamps,
-      lookbackDays,
-      interval,
-      config: convertConfigToPython({
-        entryThreshold: 2.0,
-        exitThreshold: 0.0,
-        stopLoss: 3.0,
+      console.log('[Backtest2] Running with:', {
+        symbol1,
+        symbol2,
+        interval,
+        lookbackDays,
+        dataPoints: alignedPrices1.length,
         lookbackHours,
-      }),
-    });
+      });
+
+      if (alignedPrices1.length < 30) {
+        alert('Insufficient aligned data points. Try increasing lookback days or changing interval.');
+        return;
+      }
+
+      // Run Python backtest
+      await runBacktest({
+        symbol1,
+        symbol2,
+        prices1: alignedPrices1,
+        prices2: alignedPrices2,
+        timestamps: alignedTimestamps,
+        lookbackDays,
+        interval,
+        config: convertConfigToPython({
+          entryThreshold: 2.0,
+          exitThreshold: 0.0,
+          stopLoss: 3.0,
+          lookbackHours,
+        }),
+      });
+    } catch (err) {
+      console.error('[Backtest2] Error loading data:', err);
+      alert(err instanceof Error ? err.message : 'Failed to load data');
+    }
   };
 
   return (
@@ -128,7 +153,7 @@ export default function Backtest2Page() {
                 value={symbol1}
                 onChange={(e) => setSymbol1(e.target.value)}
                 className="w-full mt-1 p-2 border rounded"
-                disabled={isLoadingData}
+                disabled={isLoadingSymbols}
               >
                 {availableSymbols.map(s => (
                   <option key={s} value={s}>{s}</option>
@@ -143,7 +168,7 @@ export default function Backtest2Page() {
                 value={symbol2}
                 onChange={(e) => setSymbol2(e.target.value)}
                 className="w-full mt-1 p-2 border rounded"
-                disabled={isLoadingData}
+                disabled={isLoadingSymbols}
               >
                 {availableSymbols.map(s => (
                   <option key={s} value={s}>{s}</option>
@@ -201,7 +226,7 @@ export default function Backtest2Page() {
             <div className="flex items-end">
               <Button
                 onClick={handleRunBacktest}
-                disabled={isLoadingData || isRunning || !futuresData}
+                disabled={isLoadingSymbols || isRunning || availableSymbols.length === 0}
                 className="w-full"
               >
                 {isRunning ? (
