@@ -68,6 +68,11 @@ export default function Backtest2Page() {
   const [lookbackDays, setLookbackDays] = useState(90);
   const [lookbackHours, setLookbackHours] = useState(24);
 
+  // Strategy parameters
+  const [entryThreshold, setEntryThreshold] = useState(2.0);
+  const [exitThreshold, setExitThreshold] = useState(0.0);
+  const [stopLoss, setStopLoss] = useState(3.0);
+
   // Handle backtest run
   const handleRunBacktest = async () => {
     try {
@@ -110,9 +115,9 @@ export default function Backtest2Page() {
         lookbackDays,
         interval,
         config: convertConfigToPython({
-          entryThreshold: 2.0,
-          exitThreshold: 0.0,
-          stopLoss: 3.0,
+          entryThreshold,
+          exitThreshold,
+          stopLoss,
           lookbackHours,
         }),
       });
@@ -242,6 +247,63 @@ export default function Backtest2Page() {
                   </>
                 )}
               </Button>
+            </div>
+          </div>
+
+          {/* Strategy Parameters */}
+          <div className="mt-6 pt-6 border-t">
+            <h3 className="text-sm font-semibold mb-4">Strategy Parameters</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Entry Threshold */}
+              <div>
+                <label className="text-sm font-medium">Entry Z-Score</label>
+                <input
+                  type="number"
+                  value={entryThreshold}
+                  onChange={(e) => setEntryThreshold(Number(e.target.value))}
+                  className="w-full mt-1 p-2 border rounded"
+                  min={0.5}
+                  max={5}
+                  step={0.1}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Enter trade when |Z| exceeds this
+                </p>
+              </div>
+
+              {/* Exit Threshold */}
+              <div>
+                <label className="text-sm font-medium">Exit Z-Score</label>
+                <input
+                  type="number"
+                  value={exitThreshold}
+                  onChange={(e) => setExitThreshold(Number(e.target.value))}
+                  className="w-full mt-1 p-2 border rounded"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Exit when Z-score crosses this (mean reversion)
+                </p>
+              </div>
+
+              {/* Stop Loss */}
+              <div>
+                <label className="text-sm font-medium">Stop Loss Z-Score</label>
+                <input
+                  type="number"
+                  value={stopLoss}
+                  onChange={(e) => setStopLoss(Number(e.target.value))}
+                  className="w-full mt-1 p-2 border rounded"
+                  min={1}
+                  max={10}
+                  step={0.1}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Exit if Z-score exceeds this (stop loss)
+                </p>
+              </div>
             </div>
           </div>
 
