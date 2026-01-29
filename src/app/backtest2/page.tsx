@@ -64,7 +64,7 @@ export default function Backtest2Page() {
   // State
   const [symbol1, setSymbol1] = useState('FIL');
   const [symbol2, setSymbol2] = useState('ICP');
-  const [interval, setInterval] = useState('15min');
+  const [interval, setInterval] = useState('15m');
   const [lookbackDays, setLookbackDays] = useState(90);
   const [lookbackHours, setLookbackHours] = useState(24);
 
@@ -197,8 +197,8 @@ export default function Backtest2Page() {
                 onChange={(e) => setInterval(e.target.value)}
                 className="w-full mt-1 p-2 border rounded"
               >
-                <option value="5min">5 min</option>
-                <option value="15min">15 min</option>
+                <option value="5m">5 min</option>
+                <option value="15m">15 min</option>
                 <option value="1h">1 hour</option>
                 <option value="4h">4 hours</option>
                 <option value="1d">1 day</option>
