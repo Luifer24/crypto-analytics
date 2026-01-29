@@ -55,8 +55,8 @@ async function fetchFuturesPrices(
 
 export default function Backtest2Page() {
   // Get available symbols
-  const { symbols, isLoading: isLoadingSymbols } = useFuturesSymbols();
-  const availableSymbols = symbols || []; // Ensure it's always an array
+  const { data, isLoading: isLoadingSymbols } = useFuturesSymbols();
+  const availableSymbols = data?.symbols.map(s => s.baseAsset) || []; // Extract base assets (BTC, ETH, etc.)
 
   // Python backtest hook
   const { runBacktest, isLoading: isRunning, error, result } = usePythonBacktest();
