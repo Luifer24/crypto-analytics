@@ -91,17 +91,24 @@ export default function Backtest2Page() {
       const alignedPrices2 = commonIndices2.map(i => data2.prices[i]);
       const alignedTimestamps = commonIndices1.map(i => data1.timestamps[i]);
 
-      console.log('[Backtest2] Running with:', {
+      console.log('[Backtest2] Data loaded:', {
         symbol1,
         symbol2,
         interval,
         lookbackDays,
-        dataPoints: alignedPrices1.length,
+        data1Points: data1.prices.length,
+        data2Points: data2.prices.length,
+        alignedPoints: alignedPrices1.length,
         lookbackHours,
       });
 
       if (alignedPrices1.length < 30) {
-        alert('Insufficient aligned data points. Try increasing lookback days or changing interval.');
+        alert(
+          `Insufficient aligned data points: ${alignedPrices1.length} found (need at least 30).\n\n` +
+          `${symbol1}: ${data1.prices.length} points\n` +
+          `${symbol2}: ${data2.prices.length} points\n\n` +
+          `Try: Reduce lookback days, change interval to 1h or 4h, or select different assets with more data.`
+        );
         return;
       }
 
@@ -213,7 +220,7 @@ export default function Backtest2Page() {
 
             {/* Lookback Hours */}
             <div>
-              <label className="text-sm font-medium">Z-Score Window (hours)</label>
+              <label className="text-sm font-medium">Rolling Window (hours)</label>
               <input
                 type="number"
                 value={lookbackHours}
@@ -224,7 +231,7 @@ export default function Backtest2Page() {
                 step={1}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Time-based lookback
+                Window for calculating Z-Score mean/std
               </p>
             </div>
 
