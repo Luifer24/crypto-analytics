@@ -411,15 +411,32 @@ export default function Backtest2Page() {
 
       {/* Info Banner */}
       {!result && !isRunning && (
-        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border-purple-200">
+        <Card className="border-purple-200/50">
           <CardContent className="pt-6">
-            <h3 className="font-semibold mb-2">🚀 Python-Powered Professional Backtesting</h3>
-            <ul className="space-y-1 text-sm text-muted-foreground">
-              <li>✅ <strong>Time-based lookback</strong> - No more interval bugs! 24h = 24h regardless of bar size</li>
-              <li>✅ <strong>statsmodels integration</strong> - Professional Engle-Granger cointegration test</li>
-              <li>✅ <strong>Proper annualization</strong> - Correct Sharpe ratio for all intervals (5min, 15min, 1h, 1d)</li>
-              <li>✅ <strong>Vectorized operations</strong> - pandas/numpy for 10-100x speed improvement</li>
-              <li>✅ <strong>Type-safe</strong> - Python dataclasses for reliability</li>
+            <h3 className="font-semibold mb-3 text-purple-700 dark:text-purple-400">
+              Python-Powered Professional Backtesting
+            </h3>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
+                <span><strong>Time-based lookback:</strong> Consistent 24h window across all intervals</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
+                <span><strong>statsmodels integration:</strong> Professional Engle-Granger cointegration test</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
+                <span><strong>Proper annualization:</strong> Correct Sharpe ratio for all intervals</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
+                <span><strong>Vectorized operations:</strong> 10-100x speed improvement with pandas/numpy</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
+                <span><strong>Type-safe:</strong> Python dataclasses for reliability</span>
+              </li>
             </ul>
           </CardContent>
         </Card>
