@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 import numpy as np
 
-# Will implement engine later
-# from src.backtest.engine import run_backtest
+# Import our backtest engine
+from src.backtest.engine import run_backtest, BacktestConfig as EngineConfig
 
 router = APIRouter()
 
@@ -137,21 +137,83 @@ async def run_backtest_endpoint(request: BacktestRequest):
                 detail="Insufficient data for backtest (need at least 30 data points)",
             )
 
-        # TODO: Implement actual backtest engine
-        # For now, return mock data
-        result = _mock_backtest_result(request)
+        # Convert prices to numpy arrays
+        prices1 = np.array(request.prices1)
+        prices2 = np.array(request.prices2)
+
+        # Convert API config to engine config
+        config = request.config or BacktestConfig()
+        engine_config = EngineConfig(
+            entry_threshold=config.entry_threshold,
+            exit_threshold=config.exit_threshold,
+            stop_loss=config.stop_loss,
+            commission_pct=config.commission_pct,
+            slippage_bps=config.slippage_bps,
+            use_dynamic_hedge=config.use_dynamic_hedge,
+            lookback_hours=config.lookback_hours,
+        )
+
+        # Run backtest using our professional engine
+        result = run_backtest(
+            prices1=prices1,
+            prices2=prices2,
+            interval=request.interval,
+            config=engine_config,
+        )
+
+        # Convert trades to API format
+        trades = [
+            TradeResult(
+                entry_time=t["entry_time"],
+                exit_time=t["exit_time"],
+                side=t["side"],
+                entry_z_score=t["entry_z_score"],
+                exit_z_score=t["exit_z_score"],
+                pnl_gross=t["pnl_gross"],
+                pnl_net=t["pnl_net"],
+                holding_period=t["holding_period"],
+                exit_reason=t["exit_reason"],
+            )
+            for t in result.trades
+        ]
+
+        # Calculate annualized return for metrics
+        total_return = result.metrics["total_return"]
+        periods = len(result.daily_returns)
+        ann_factor = _get_annualization_factor(request.interval)
+        annualized_return = (1 + total_return) ** (ann_factor / periods) - 1 if periods > 0 else 0.0
+
+        # Convert metrics to API format
+        metrics = BacktestMetrics(
+            total_return=result.metrics["total_return"],
+            annualized_return=annualized_return,
+            sharpe=result.metrics["sharpe_ratio"],
+            sortino=result.metrics["sortino_ratio"],
+            max_drawdown=result.metrics["max_drawdown"],
+            win_rate=result.metrics["win_rate"],
+            profit_factor=result.metrics["profit_factor"],
+            avg_trade_pnl=(result.metrics["avg_win"] * result.metrics["win_rate"] +
+                          result.metrics["avg_loss"] * (1 - result.metrics["win_rate"]))
+                          if result.metrics["total_trades"] > 0 else 0.0,
+            avg_holding_period=result.metrics["avg_holding_period"],
+            total_trades=result.metrics["total_trades"],
+            winning_trades=result.metrics["winning_trades"],
+            losing_trades=result.metrics["losing_trades"],
+        )
 
         execution_time = (time.time() - start_time) * 1000
 
         return BacktestResponse(
             success=True,
-            trades=result["trades"],
-            metrics=result["metrics"],
-            equity_curve=result["equity_curve"],
-            config_used=request.config or BacktestConfig(),
+            trades=trades,
+            metrics=metrics,
+            equity_curve=result.equity_curve,
+            config_used=config,
             execution_time_ms=execution_time,
         )
 
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
 
@@ -167,48 +229,33 @@ async def health_check():
 
 
 # ============================================================================
-# Temporary Mock (Remove when engine is ready)
+# Helper Functions
 # ============================================================================
 
 
-def _mock_backtest_result(request: BacktestRequest) -> Dict[str, Any]:
-    """Generate mock backtest result for testing API."""
-    # Create simple mock data
-    n_trades = 10
-    trades = [
-        TradeResult(
-            entry_time=i * 100,
-            exit_time=i * 100 + 50,
-            side="long_spread" if i % 2 == 0 else "short_spread",
-            entry_z_score=2.5 * (1 if i % 2 == 0 else -1),
-            exit_z_score=0.1,
-            pnl_gross=0.005,
-            pnl_net=0.004,
-            holding_period=50,
-            exit_reason="mean_reversion",
-        )
-        for i in range(n_trades)
-    ]
+def _get_annualization_factor(interval: str) -> float:
+    """Get annualization factor for a given interval."""
+    interval = interval.lower().strip()
 
-    metrics = BacktestMetrics(
-        total_return=0.04,
-        annualized_return=0.16,
-        sharpe=1.5,
-        sortino=2.0,
-        max_drawdown=0.08,
-        win_rate=0.7,
-        profit_factor=2.3,
-        avg_trade_pnl=0.004,
-        avg_holding_period=50,
-        total_trades=n_trades,
-        winning_trades=7,
-        losing_trades=3,
-    )
+    # Minute intervals
+    if interval.endswith('min') or interval.endswith('m'):
+        minutes = float(interval.rstrip('minm'))
+        return 365 * 24 * 60 / minutes
 
-    equity_curve = [1.0 + i * 0.004 for i in range(n_trades + 1)]
+    # Hour intervals
+    if interval.endswith('h'):
+        hours = float(interval.rstrip('h'))
+        return 365 * 24 / hours
 
-    return {
-        "trades": trades,
-        "metrics": metrics,
-        "equity_curve": equity_curve,
-    }
+    # Day intervals
+    if interval.endswith('d'):
+        days = float(interval.rstrip('d'))
+        return 365 / days
+
+    # Week intervals
+    if interval.endswith('w'):
+        weeks = float(interval.rstrip('w'))
+        return 52 / weeks
+
+    # Default to daily
+    return 365
