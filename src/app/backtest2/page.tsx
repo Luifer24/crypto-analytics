@@ -55,7 +55,8 @@ async function fetchFuturesPrices(
 
 export default function Backtest2Page() {
   // Get available symbols
-  const { symbols: availableSymbols, isLoading: isLoadingSymbols } = useFuturesSymbols();
+  const { symbols, isLoading: isLoadingSymbols } = useFuturesSymbols();
+  const availableSymbols = symbols || []; // Ensure it's always an array
 
   // Python backtest hook
   const { runBacktest, isLoading: isRunning, error, result } = usePythonBacktest();
