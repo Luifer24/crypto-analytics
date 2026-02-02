@@ -112,6 +112,7 @@ export default function BacktestPage() {
   const [exitThreshold, setExitThreshold] = useState(0.0);
   const [stopLoss, setStopLoss] = useState(3.0);
   const [useDynamicHedge, setUseDynamicHedge] = useState(false);
+  const [lookbackHours, setLookbackHours] = useState(24.0);
 
   // Backtest hook
   const {
@@ -128,6 +129,7 @@ export default function BacktestPage() {
       exitThreshold,
       stopLoss,
       useDynamicHedge,
+      lookbackHours,
     };
 
     runBacktest(
@@ -331,6 +333,26 @@ export default function BacktestPage() {
               />
               <span className="text-sm text-crypto-text">Kalman (Dynamic Hedge)</span>
             </label>
+          </div>
+
+          {/* Lookback Hours */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">
+              Lookback Hours
+              <span className="ml-1 text-xs">(for Z-Score)</span>
+            </label>
+            <input
+              type="number"
+              value={lookbackHours}
+              onChange={(e) => setLookbackHours(Number(e.target.value))}
+              step={1}
+              min={1}
+              max={168}
+              className="w-full px-3 py-2 bg-crypto-bg border border-crypto-border rounded-md text-crypto-text"
+            />
+            <p className="text-xs text-crypto-muted mt-1">
+              @ {interval}: ~{Math.floor((lookbackHours * 60) / (interval.endsWith('m') ? parseInt(interval) : interval === '1h' ? 60 : interval === '4h' ? 240 : 1440))} bars
+            </p>
           </div>
         </div>
 

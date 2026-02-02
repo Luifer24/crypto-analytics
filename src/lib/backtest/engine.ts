@@ -25,6 +25,84 @@ import {
 } from "./execution";
 
 // ============================================================================
+// Interval Parsing Utilities
+// ============================================================================
+
+/**
+ * Parse interval string to minutes
+ *
+ * Supported formats:
+ * - '5min' → 5 minutes
+ * - '15min' → 15 minutes
+ * - '1h' → 60 minutes
+ * - '4h' → 240 minutes
+ * - '1d' → 1440 minutes
+ *
+ * @param interval - Interval string (e.g., '5min', '1h', '1d')
+ * @returns Number of minutes in the interval
+ */
+function parseIntervalToMinutes(interval: string): number {
+  const normalized = interval.toLowerCase().trim();
+
+  // Minute intervals (5min, 15min, 30min)
+  if (normalized.endsWith('min')) {
+    return parseFloat(normalized.replace('min', ''));
+  }
+
+  // Hour intervals (1h, 4h)
+  if (normalized.endsWith('h')) {
+    const hours = parseFloat(normalized.replace('h', ''));
+    return hours * 60;
+  }
+
+  // Day intervals (1d)
+  if (normalized.endsWith('d')) {
+    const days = parseFloat(normalized.replace('d', ''));
+    return days * 1440;
+  }
+
+  // Week intervals (1w)
+  if (normalized.endsWith('w')) {
+    const weeks = parseFloat(normalized.replace('w', ''));
+    return weeks * 10080;
+  }
+
+  // Default to 1 day if unparseable
+  console.warn(`[Backtest] Unknown interval format: ${interval}, defaulting to 1d`);
+  return 1440;
+}
+
+/**
+ * Calculate lookback period in bars based on time duration
+ *
+ * This fixes the interval bug where fixed 20-bar lookback gave different
+ * time periods for different intervals:
+ * - 20 bars @ 5min = 1.67h (WRONG!)
+ * - 20 bars @ 15min = 5h (WRONG!)
+ *
+ * Now using time-based lookback:
+ * - 24h @ 5min = 288 bars (CORRECT)
+ * - 24h @ 15min = 96 bars (CORRECT)
+ *
+ * @param lookbackHours - Desired lookback period in hours
+ * @param interval - Bar interval string (e.g., '5min', '15min', '1h')
+ * @returns Number of bars for the lookback period
+ *
+ * @example
+ * calculateLookbackBars(24.0, '5min')  // → 288 bars
+ * calculateLookbackBars(24.0, '15min') // → 96 bars
+ * calculateLookbackBars(24.0, '1h')    // → 24 bars
+ */
+function calculateLookbackBars(lookbackHours: number, interval: string): number {
+  const intervalMinutes = parseIntervalToMinutes(interval);
+  const lookbackMinutes = lookbackHours * 60;
+  const bars = Math.floor(lookbackMinutes / intervalMinutes);
+
+  // Ensure minimum of 10 bars for statistical validity
+  return Math.max(10, bars);
+}
+
+// ============================================================================
 // Default Configuration
 // ============================================================================
 
@@ -43,6 +121,7 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   forceHedgeRatio: undefined,  // Optional: force specific hedge ratio
   forceIntercept: undefined,   // Optional: force specific intercept
   barInterval: '1d',           // Default: daily bars (for backward compatibility)
+  lookbackHours: 24.0,         // Default: 24 hours (MATCHES PYTHON)
 };
 
 // ============================================================================
@@ -69,16 +148,21 @@ interface PositionState {
  *
  * @param prices1 - Price series for asset 1
  * @param prices2 - Price series for asset 2
- * @param config - Backtest configuration
- * @param lookbackForStats - Bars for rolling statistics (Z-Score calculation)
+ * @param config - Backtest configuration (lookbackHours calculated from config)
  */
 export function runBacktest(
   prices1: number[],
   prices2: number[],
-  config: Partial<BacktestConfig> = {},
-  lookbackForStats: number = 20
+  config: Partial<BacktestConfig> = {}
 ): BacktestResult {
   const cfg = { ...DEFAULT_BACKTEST_CONFIG, ...config };
+
+  // Calculate time-based lookback (FIXES THE INTERVAL BUG!)
+  const lookbackHours = cfg.lookbackHours || 24.0;
+  const barInterval = cfg.barInterval || '1d';
+  const lookbackForStats = calculateLookbackBars(lookbackHours, barInterval);
+
+  console.log(`[Backtest] Lookback: ${lookbackHours}h = ${lookbackForStats} bars @ ${barInterval}`);
 
   // Validate input
   if (prices1.length !== prices2.length) {
@@ -390,10 +474,9 @@ export function runBacktestWithTimestamps(
   prices1: number[],
   prices2: number[],
   timestamps: number[],
-  config: Partial<BacktestConfig> = {},
-  lookbackForStats: number = 20
+  config: Partial<BacktestConfig> = {}
 ): BacktestResult & { timestampedTrades: Array<Trade & { entryTimestamp: number; exitTimestamp: number }> } {
-  const result = runBacktest(prices1, prices2, config, lookbackForStats);
+  const result = runBacktest(prices1, prices2, config);
 
   const timestampedTrades = result.trades.map(trade => ({
     ...trade,

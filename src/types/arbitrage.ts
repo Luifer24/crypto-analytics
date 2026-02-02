@@ -249,6 +249,8 @@ export interface BacktestConfig {
   forceIntercept?: number;
   /** Bar interval for proper annualization (default: '1d') */
   barInterval?: '1min' | '5min' | '15min' | '30min' | '1h' | '4h' | '1d';
+  /** Lookback period in hours for Z-Score calculation (default: 24.0) */
+  lookbackHours?: number;
 }
 
 export interface BacktestMetrics {
