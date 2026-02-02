@@ -67,6 +67,8 @@ class BacktestResult:
     metrics: Dict  # Metrics dict for JSON serialization
     daily_returns: List[float]
     config: Dict  # Config dict for JSON serialization
+    hedge_ratio: float  # Hedge ratio (β) used
+    intercept: float  # Intercept (α) used
 
 
 class PositionState:
@@ -387,4 +389,6 @@ def run_backtest(
         metrics=asdict(metrics),
         daily_returns=daily_returns,
         config=asdict(config),
+        hedge_ratio=hedge_ratio,
+        intercept=intercept,
     )

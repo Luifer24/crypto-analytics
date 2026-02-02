@@ -128,6 +128,8 @@ class BacktestResponse(BaseModel):
     equity_curve: List[float]
     config_used: BacktestConfig
     execution_time_ms: float
+    hedge_ratio: float  # Hedge ratio (β) used in backtest
+    intercept: float  # Intercept (α) used in backtest
 
 
 # ============================================================================
@@ -245,6 +247,8 @@ async def run_backtest_endpoint(request: BacktestRequest):
             equity_curve=result.equity_curve,
             config_used=config,
             execution_time_ms=execution_time,
+            hedge_ratio=result.hedge_ratio,
+            intercept=result.intercept,
         )
 
     except ValueError as e:

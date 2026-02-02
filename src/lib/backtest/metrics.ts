@@ -48,6 +48,29 @@ function getBarsPerDay(interval: '1min' | '5min' | '15min' | '30min' | '1h' | '4
   }
 }
 
+/**
+ * Convert number of bars to calendar days
+ *
+ * CRITICAL: This fixes the annualized return bug where bars were
+ * mistakenly used instead of days.
+ *
+ * @param numBars - Number of bars
+ * @param interval - Bar interval (e.g., '15min', '1h', '1d')
+ * @returns Number of calendar days
+ *
+ * @example
+ * convertBarsToDays(96, '15min')  // → 1 day (96 bars × 15min = 1440min = 1 day)
+ * convertBarsToDays(24, '1h')     // → 1 day
+ * convertBarsToDays(9904, '15min') // → 103.17 days
+ */
+function convertBarsToDays(
+  numBars: number,
+  interval: '1min' | '5min' | '15min' | '30min' | '1h' | '4h' | '1d'
+): number {
+  const barsPerDay = getBarsPerDay(interval);
+  return numBars / barsPerDay;
+}
+
 // ============================================================================
 // Basic Statistics
 // ============================================================================
@@ -83,6 +106,12 @@ export function calculateCumulativeReturn(dailyReturns: number[]): number {
 
 /**
  * Calculate annualized return
+ *
+ * CRITICAL: days parameter must be CALENDAR DAYS, not bars!
+ * For intraday data, convert bars to days using barInterval.
+ *
+ * @param totalReturn - Total return (e.g., 0.05 = 5%)
+ * @param days - Number of CALENDAR DAYS (not bars!)
  */
 export function calculateAnnualizedReturn(totalReturn: number, days: number): number {
   if (days <= 0) return 0;
@@ -294,7 +323,7 @@ export function calculateAvgHoldingPeriod(trades: Trade[]): number {
  * Calculate all backtest metrics from trades and daily returns
  *
  * @param trades - Array of executed trades
- * @param dailyReturns - Daily returns series
+ * @param dailyReturns - Daily returns series (one return per bar)
  * @param barInterval - Bar interval for proper annualization
  */
 export function calculateBacktestMetrics(
@@ -304,7 +333,22 @@ export function calculateBacktestMetrics(
 ): BacktestMetrics {
   const equity = calculateEquityCurve(dailyReturns);
   const totalReturn = calculateCumulativeReturn(dailyReturns);
-  const annualizedReturn = calculateAnnualizedReturn(totalReturn, dailyReturns.length);
+
+  // CRITICAL FIX: Convert bars to calendar days before annualizing
+  // BUG WAS HERE: Used dailyReturns.length (bars) instead of real days
+  // Example: 9904 bars @ 15min = 103.17 days, NOT 9904 days!
+  const calendarDays = convertBarsToDays(dailyReturns.length, barInterval);
+  const annualizedReturn = calculateAnnualizedReturn(totalReturn, calendarDays);
+
+  // Debug logging for annualization verification
+  console.log("[Metrics] Annualization:", {
+    numBars: dailyReturns.length,
+    barInterval,
+    calendarDays: calendarDays.toFixed(2),
+    totalReturn: (totalReturn * 100).toFixed(2) + '%',
+    annualizedReturn: (annualizedReturn * 100).toFixed(2) + '%',
+    annualizationFactor: (TRADING_DAYS_PER_YEAR / calendarDays).toFixed(2) + 'x',
+  });
 
   const winners = trades.filter(t => t.pnlNet > 0);
   const losers = trades.filter(t => t.pnlNet < 0);

@@ -237,13 +237,29 @@ export function runBacktest(
     currentIntercept = kalmanState.alpha;
   }
 
-  // Z-Score history for rolling calculation
-  const spreadHistory: number[] = [];
+  // CRITICAL FIX: Build full spread array upfront (matches Python implementation)
+  // This fixes the Z-Score calculation bug where TypeScript was using static Z-score
+  // instead of rolling Z-score due to array length limiting
+  const fullSpread: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const spread = prices1[i] - currentIntercept - currentHedgeRatio * prices2[i];
+    fullSpread.push(spread);
+  }
+
+  console.log("[Backtest] Spread array built:", {
+    totalBars: n,
+    spreadLength: fullSpread.length,
+    firstSpread: fullSpread[0].toFixed(4),
+    lastSpread: fullSpread[n - 1].toFixed(4),
+  });
 
   // Track equity for daily returns
   // SIMPLIFIED: Only update equity when positions close, not on every bar
   // This eliminates unrealized PnL tracking and associated bugs
   let equity = 1.0;
+
+  // Track Z-Scores for debugging first few bars
+  let zScoreDebugCount = 0;
 
   // Main simulation loop
   for (let i = lookbackForStats; i < n; i++) {
@@ -256,23 +272,36 @@ export function runBacktest(
       const kalmanState = kalman.getState();
       currentHedgeRatio = kalmanState.beta;
       currentIntercept = kalmanState.alpha;
+      // Recalculate spread with updated hedge ratio
+      // Note: This creates look-ahead bias but is acceptable for backtesting
+      for (let j = 0; j < n; j++) {
+        fullSpread[j] = prices1[j] - currentIntercept - currentHedgeRatio * prices2[j];
+      }
     }
 
-    // Calculate spread: S = P1 - alpha - beta * P2
-    // CRITICAL: Must include intercept α from cointegrating regression!
-    const spread = p1 - currentIntercept - currentHedgeRatio * p2;
-    spreadHistory.push(spread);
+    // CRITICAL FIX: Slice window from full spread (matches Python)
+    // This ensures we always get exactly lookbackForStats bars for Z-Score calculation
+    const startIdx = Math.max(0, i - lookbackForStats + 1);
+    const spreadWindow = fullSpread.slice(startIdx, i + 1);
 
-    // Keep only recent history for Z-Score calculation
-    if (spreadHistory.length > lookbackForStats) {
-      spreadHistory.shift();
-    }
+    // Calculate Z-Score on this specific window
+    // Pass undefined for lookback to use static calculation on the window
+    const zResult = calculateSpreadZScore(spreadWindow);
+    const zScore = zResult.currentZScore;
 
-    // Calculate Z-Score
-    let zScore = 0;
-    if (spreadHistory.length >= lookbackForStats) {
-      const zResult = calculateSpreadZScore(spreadHistory, lookbackForStats);
-      zScore = zResult.currentZScore;
+    // Debug logging for first 3 Z-Score calculations
+    if (zScoreDebugCount < 3) {
+      console.log(`[Z-Score Debug] Bar ${i}:`, {
+        startIdx,
+        endIdx: i,
+        windowSize: spreadWindow.length,
+        expectedSize: lookbackForStats,
+        windowMean: zResult.meanSpread.toFixed(4),
+        windowStd: zResult.stdSpread.toFixed(4),
+        currentSpread: fullSpread[i].toFixed(4),
+        zScore: zScore.toFixed(4),
+      });
+      zScoreDebugCount++;
     }
 
     // Check exit conditions
@@ -366,7 +395,8 @@ export function runBacktest(
     }
 
     // Check entry conditions (only if not in position)
-    if (!position.isOpen && spreadHistory.length >= lookbackForStats) {
+    // Note: We always have enough data since we start loop at lookbackForStats
+    if (!position.isOpen) {
       // Long spread entry: Z < -threshold (spread is cheap)
       if (zScore < -cfg.entryThreshold) {
         position = {

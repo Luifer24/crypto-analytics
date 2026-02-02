@@ -118,10 +118,30 @@ export function useBacktest() {
             fetchFuturesPrices(input.symbol2.toUpperCase(), input.lookbackDays, input.interval),
           ]);
 
-          // Align by taking minimum length
-          const minLen = Math.min(data1.prices.length, data2.prices.length);
-          prices1 = data1.prices.slice(-minLen);
-          prices2 = data2.prices.slice(-minLen);
+          // Align by timestamps (same logic as Python UI for consistency)
+          const timestamps1Set = new Set(data1.timestamps);
+          const timestamps2Set = new Set(data2.timestamps);
+
+          // Find common timestamps
+          const commonIndices1 = data1.timestamps
+            .map((t, i) => (timestamps2Set.has(t) ? i : -1))
+            .filter(i => i !== -1);
+          const commonIndices2 = data2.timestamps
+            .map((t, i) => (timestamps1Set.has(t) ? i : -1))
+            .filter(i => i !== -1);
+
+          // Extract aligned prices
+          prices1 = commonIndices1.map(i => data1.prices[i]);
+          prices2 = commonIndices2.map(i => data2.prices[i]);
+
+          console.log('[Backtest] Data alignment:', {
+            symbol1: input.symbol1,
+            symbol2: input.symbol2,
+            data1Points: data1.prices.length,
+            data2Points: data2.prices.length,
+            alignedPoints: prices1.length,
+            removedPoints: Math.max(data1.prices.length, data2.prices.length) - prices1.length,
+          });
         } else {
           [prices1, prices2] = await Promise.all([
             fetchSpotPrices(input.symbol1.toUpperCase(), input.lookbackDays),

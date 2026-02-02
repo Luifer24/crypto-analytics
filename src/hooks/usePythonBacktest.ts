@@ -66,6 +66,8 @@ interface PythonBacktestResponse {
   equity_curve: number[];
   config_used: PythonBacktestConfig;
   execution_time_ms: number;
+  hedge_ratio: number;  // Hedge ratio (β) used
+  intercept: number;  // Intercept (α) used
 }
 
 interface UsePythonBacktestReturn {
@@ -132,6 +134,8 @@ export function usePythonBacktest(): UsePythonBacktestReturn {
       const data: PythonBacktestResponse = await response.json();
 
       console.log('[PythonBacktest] Success:', {
+        hedgeRatio: data.hedge_ratio.toFixed(6),
+        intercept: data.intercept.toFixed(6),
         trades: data.trades.length,
         totalReturn: (data.metrics.total_return * 100).toFixed(2) + '%',
         sharpe: data.metrics.sharpe.toFixed(2),
