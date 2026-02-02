@@ -10,13 +10,45 @@
  * - Vectorized operations (10-100x faster)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Play, Zap, TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import { usePythonBacktest, convertConfigToPython } from '@/hooks/usePythonBacktest';
 import { useFuturesSymbols } from '@/hooks/useFuturesData';
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from 'recharts';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Format timestamp for chart display based on interval
+ */
+function formatTimestamp(timestamp: number, interval: string): string {
+  const date = new Date(timestamp);
+
+  if (interval === '1d') {
+    // Daily: show MM/DD
+    return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
+  } else {
+    // Intraday: show MM/DD HH:mm
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${month}/${day} ${hours}:${minutes}`;
+  }
+}
 
 // ============================================================================
 // Data Fetching
@@ -73,6 +105,45 @@ export default function Backtest2Page() {
   const [exitThreshold, setExitThreshold] = useState(0.0);
   const [stopLoss, setStopLoss] = useState(3.0);
 
+  // Price data for charts
+  const [priceData, setPriceData] = useState<{
+    prices1: number[];
+    prices2: number[];
+    timestamps: number[];
+  } | null>(null);
+
+  // Calculate Z-Score series
+  const zScoreData = useMemo(() => {
+    if (!priceData || !result) return null;
+
+    const { hedge_ratio, intercept } = result;
+    const { prices1, prices2 } = priceData;
+
+    // Calculate spread series
+    const spread = prices1.map((p1, i) => p1 - intercept - hedge_ratio * prices2[i]);
+
+    // Calculate rolling Z-Score (using lookbackHours)
+    const lookbackBars = Math.floor((lookbackHours * 60) / parseInt(interval.replace(/[^\d]/g, '')));
+    const zScores: number[] = [];
+
+    for (let i = 0; i < spread.length; i++) {
+      const startIdx = Math.max(0, i - lookbackBars + 1);
+      const window = spread.slice(startIdx, i + 1);
+
+      const mean = window.reduce((sum, val) => sum + val, 0) / window.length;
+      const variance = window.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / (window.length - 1);
+      const std = Math.sqrt(variance);
+
+      const z = std > 0 ? (spread[i] - mean) / std : 0;
+      zScores.push(z);
+    }
+
+    return zScores.map((z, index) => ({
+      timestamp: priceData.timestamps[index],
+      zScore: z
+    }));
+  }, [priceData, result, lookbackHours, interval]);
+
   // Handle backtest run
   const handleRunBacktest = async () => {
     try {
@@ -112,6 +183,13 @@ export default function Backtest2Page() {
         return;
       }
 
+      // Store price data for charts
+      setPriceData({
+        prices1: alignedPrices1,
+        prices2: alignedPrices2,
+        timestamps: alignedTimestamps,
+      });
+
       // Run Python backtest
       await runBacktest({
         symbol1,
@@ -135,7 +213,7 @@ export default function Backtest2Page() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="w-full px-6 py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -324,9 +402,9 @@ export default function Backtest2Page() {
       </Card>
 
       {/* Results */}
-      {result && (
+      {result && priceData && (
         <>
-          {/* Metrics Grid */}
+          {/* Metrics Row - Full Width */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
@@ -383,6 +461,231 @@ export default function Backtest2Page() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Two-Column Layout: Equity Curve (left) + Price & Z-Score (right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left: Equity Curve */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Equity Curve</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[600px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsLineChart
+                      data={result.equity_curve.map((value, index) => ({
+                        timestamp: priceData.timestamps[index],
+                        pnl: (value - 1) * 100, // Convert to %PnL: 1.0 → 0%, 1.2 → 20%, 0.9 → -10%
+                      }))}
+                      margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+                    >
+                      <defs>
+                        <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
+                        </linearGradient>
+                        <linearGradient id="equityGradientNegative" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="timestamp"
+                        tickFormatter={(ts) => formatTimestamp(ts, interval)}
+                        tick={{ fontSize: 10 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis
+                        label={{ value: '%PnL', angle: -90, position: 'insideLeft' }}
+                        tick={{ fontSize: 10 }}
+                      />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const pnl = payload[0].value as number;
+                            const timestamp = payload[0].payload.timestamp;
+                            return (
+                              <div className="bg-background border rounded p-2 shadow-lg text-xs">
+                                <p className="font-semibold">{formatTimestamp(timestamp, interval)}</p>
+                                <p className={pnl >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                  PnL: {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <ReferenceLine y={0} stroke="#666" strokeDasharray="3 3" label={{ value: 'Break-even', fontSize: 10 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="pnl"
+                        stroke="#8884d8"
+                        strokeWidth={2}
+                        dot={false}
+                        fill="url(#equityGradient)"
+                      />
+                    </RechartsLineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Right: Price + Z-Score Charts */}
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Asset Prices & Signals</span>
+                    <div className="flex gap-3 text-xs">
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                        {symbol1}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        {symbol2}
+                      </span>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsLineChart
+                        data={priceData.prices1.map((price1, index) => ({
+                          index,
+                          timestamp: priceData.timestamps[index],
+                          price1: price1,
+                          price2: priceData.prices2[index],
+                        }))}
+                        margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+                      >
+                        <XAxis
+                          dataKey="timestamp"
+                          tickFormatter={(ts) => formatTimestamp(ts, interval)}
+                          tick={{ fontSize: 9 }}
+                          angle={-45}
+                          textAnchor="end"
+                          height={50}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tick={{ fontSize: 10 }}
+                          label={{ value: symbol1, angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tick={{ fontSize: 10 }}
+                          label={{ value: symbol2, angle: 90, position: 'insideRight', style: { fontSize: 10 } }}
+                        />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const timestamp = payload[0].payload.timestamp;
+                              return (
+                                <div className="bg-background border rounded p-2 shadow-lg text-xs">
+                                  <p className="font-semibold">{formatTimestamp(timestamp, interval)}</p>
+                                  <p className="text-blue-500">{symbol1}: ${payload[0].value?.toFixed(4)}</p>
+                                  <p className="text-green-500">{symbol2}: ${payload[1]?.value?.toFixed(4)}</p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="price1"
+                          stroke="#3b82f6"
+                          strokeWidth={1.5}
+                          dot={false}
+                          name={symbol1}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="price2"
+                          stroke="#10b981"
+                          strokeWidth={1.5}
+                          dot={false}
+                          name={symbol2}
+                        />
+                      </RechartsLineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Z-Score</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64">
+                    {zScoreData ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsLineChart
+                          data={zScoreData}
+                          margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+                        >
+                          <XAxis
+                            dataKey="timestamp"
+                            tickFormatter={(ts) => formatTimestamp(ts, interval)}
+                            tick={{ fontSize: 9 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={50}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 10 }}
+                            domain={[-4, 4]}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const timestamp = payload[0].payload.timestamp;
+                                return (
+                                  <div className="bg-background border rounded p-2 shadow-lg text-xs">
+                                    <p className="font-semibold">{formatTimestamp(timestamp, interval)}</p>
+                                    <p>Z-Score: {payload[0].value?.toFixed(3)}</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          {/* Entry thresholds */}
+                          <ReferenceLine y={entryThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: `+${entryThreshold}`, fontSize: 10, fill: '#ef4444' }} />
+                          <ReferenceLine y={-entryThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: `-${entryThreshold}`, fontSize: 10, fill: '#ef4444' }} />
+                          {/* Exit threshold */}
+                          <ReferenceLine y={exitThreshold} stroke="#10b981" strokeDasharray="3 3" label={{ value: `${exitThreshold}`, fontSize: 10, fill: '#10b981' }} />
+                          {/* Stop loss */}
+                          <ReferenceLine y={stopLoss} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: `+${stopLoss}`, fontSize: 10, fill: '#f59e0b' }} />
+                          <ReferenceLine y={-stopLoss} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: `-${stopLoss}`, fontSize: 10, fill: '#f59e0b' }} />
+                          <Line
+                            type="monotone"
+                            dataKey="zScore"
+                            stroke="#8b5cf6"
+                            strokeWidth={1.5}
+                            dot={false}
+                          />
+                        </RechartsLineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <p className="text-sm text-muted-foreground">Run backtest to see Z-Score</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           {/* Detailed Metrics */}
