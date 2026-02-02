@@ -27,7 +27,7 @@ interface PythonBacktestRequest {
   prices1: number[];
   prices2: number[];
   timestamps?: number[];
-  lookbackDays: number;
+  lookbackDays: number;  // Backend ahora acepta camelCase gracias a Pydantic aliases
   interval: string;
   config?: PythonBacktestConfig;
 }
@@ -104,6 +104,7 @@ export function usePythonBacktest(): UsePythonBacktestReturn {
         config: request.config,
       });
 
+      // Backend acepta camelCase gracias a Pydantic aliases
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -114,7 +115,18 @@ export function usePythonBacktest(): UsePythonBacktestReturn {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+
+        // Handle Pydantic validation errors (422)
+        if (response.status === 422 && Array.isArray(errorData.detail)) {
+          const errors = errorData.detail.map((err: any) => `${err.loc.join('.')}: ${err.msg}`).join(', ');
+          throw new Error(`Validation error: ${errors}`);
+        }
+
+        // Handle other errors
+        const message = typeof errorData.detail === 'string'
+          ? errorData.detail
+          : JSON.stringify(errorData.detail);
+        throw new Error(message || `HTTP ${response.status}`);
       }
 
       const data: PythonBacktestResponse = await response.json();
@@ -153,6 +165,7 @@ export function usePythonBacktest(): UsePythonBacktestReturn {
 
 /**
  * Convert TypeScript backtest config to Python format
+ * Backend acepta camelCase gracias a Pydantic aliases
  */
 export function convertConfigToPython(config: any): PythonBacktestConfig {
   return {

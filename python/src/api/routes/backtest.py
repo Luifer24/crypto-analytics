@@ -23,15 +23,43 @@ router = APIRouter()
 class BacktestConfig(BaseModel):
     """Backtest configuration parameters."""
 
-    entry_threshold: float = Field(default=2.0, description="Z-Score entry threshold")
-    exit_threshold: float = Field(default=0.0, description="Z-Score exit threshold")
-    stop_loss: float = Field(default=3.0, description="Z-Score stop loss")
-    commission_pct: float = Field(default=0.0004, description="Commission percentage")
-    slippage_bps: float = Field(default=3, description="Slippage in basis points")
-    use_dynamic_hedge: bool = Field(default=False, description="Use Kalman filter")
-    lookback_hours: Optional[float] = Field(
-        default=24, description="Lookback period in hours for Z-Score"
+    entry_threshold: float = Field(
+        default=2.0,
+        alias="entryThreshold",
+        description="Z-Score entry threshold"
     )
+    exit_threshold: float = Field(
+        default=0.0,
+        alias="exitThreshold",
+        description="Z-Score exit threshold"
+    )
+    stop_loss: float = Field(
+        default=3.0,
+        alias="stopLoss",
+        description="Z-Score stop loss"
+    )
+    commission_pct: float = Field(
+        default=0.0004,
+        alias="commissionPct",
+        description="Commission percentage"
+    )
+    slippage_bps: float = Field(
+        default=3,
+        alias="slippageBps",
+        description="Slippage in basis points"
+    )
+    use_dynamic_hedge: bool = Field(
+        default=False,
+        alias="useDynamicHedge",
+        description="Use Kalman filter"
+    )
+    lookback_hours: Optional[float] = Field(
+        default=24,
+        alias="lookbackHours",
+        description="Lookback period in hours for Z-Score"
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class BacktestRequest(BaseModel):
@@ -44,13 +72,20 @@ class BacktestRequest(BaseModel):
     timestamps: Optional[List[int]] = Field(
         None, description="Unix timestamps (optional)"
     )
-    lookback_days: int = Field(..., description="Lookback period in days", example=90)
+    lookback_days: int = Field(
+        ...,
+        alias="lookbackDays",
+        description="Lookback period in days",
+        example=90
+    )
     interval: str = Field(
         ..., description="Bar interval (5min, 15min, 1h, 1d)", example="15min"
     )
     config: Optional[BacktestConfig] = Field(
         default_factory=BacktestConfig, description="Backtest configuration"
     )
+
+    model_config = {"populate_by_name": True}
 
 
 class TradeResult(BaseModel):
