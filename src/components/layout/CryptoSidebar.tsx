@@ -31,7 +31,6 @@ const navItems = [
   { icon: Database, label: "Database", path: "/database" },
   { icon: LineChart, label: "Backtest Legacy", path: "/backtest" },
   { icon: Zap, label: "Backtest", path: "/backtest2" },
-  { icon: CheckCircle2, label: "Test BT", path: "/test-backtest" },
   { icon: Star, label: "Watchlist", path: "/watchlist" },
   { icon: FlaskConical, label: "Analysis", path: "/analysis" },
   { icon: Globe, label: "Macro", path: "/macro" },
