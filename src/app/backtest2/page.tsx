@@ -265,7 +265,7 @@ export default function Backtest2Page() {
         <div>
           <h1 className="text-2xl font-bold text-crypto-text flex items-center gap-3">
             <Zap className="w-6 h-6 text-crypto-accent" />
-            Backtest 2.0
+            Backtest
             <Badge variant="default" className="bg-gradient-to-r from-purple-500 to-blue-500">
               Python Powered
             </Badge>
@@ -470,7 +470,7 @@ export default function Backtest2Page() {
             <MetricCard
               icon={TrendingDown}
               label="Max Drawdown"
-              value={`${(result.metrics.max_drawdown * 100).toFixed(2)}%`}
+              value={`-${(Math.abs(result.metrics.max_drawdown) * 100).toFixed(2)}%`}
               valueClass="text-red-500"
             />
             <MetricCard

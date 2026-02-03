@@ -166,7 +166,7 @@ export default function BacktestPage() {
         <div>
           <h1 className="text-2xl font-bold text-crypto-text flex items-center gap-2">
             <LineChartIcon className="w-6 h-6 text-crypto-accent" />
-            Backtest
+            Backtest Legacy
           </h1>
           <p className="text-crypto-muted mt-1">
             Test pairs trading strategies on historical data
