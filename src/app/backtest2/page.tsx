@@ -332,9 +332,9 @@ export default function Backtest2Page() {
             </Select>
           </div>
 
-          {/* Lookback Days */}
+          {/* Hedge Ratio Period */}
           <div>
-            <label className="text-sm text-crypto-muted mb-2 block">Lookback Days</label>
+            <label className="text-sm text-crypto-muted mb-2 block">Hedge Ratio Period (days)</label>
             <Input
               type="number"
               value={lookbackDays}
@@ -343,12 +343,15 @@ export default function Backtest2Page() {
               min={7}
               max={365}
             />
+            <p className="text-xs text-crypto-muted mt-1">
+              Historical data for static hedge ratio (Engle-Granger)
+            </p>
           </div>
 
-          {/* Lookback Hours */}
+          {/* Z-Score Lookback */}
           <div>
             <label className="text-sm text-crypto-muted mb-2 block">
-              Rolling Window (hours)
+              Z-Score Lookback (hours)
             </label>
             <Input
               type="number"
@@ -360,7 +363,7 @@ export default function Backtest2Page() {
               step={1}
             />
             <p className="text-xs text-crypto-muted mt-1">
-              Window for calculating Z-Score mean/std
+              Rolling window for Z-Score normalization
             </p>
           </div>
 
