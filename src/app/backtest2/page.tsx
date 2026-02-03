@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -146,6 +147,10 @@ export default function Backtest2Page() {
   const [lookbackDays, setLookbackDays] = useState(90);
   const [lookbackHours, setLookbackHours] = useState(24);
 
+  // Hedge ratio configuration
+  const [useRollingHedge, setUseRollingHedge] = useState(false);
+  const [hedgeRatioLookbackDays, setHedgeRatioLookbackDays] = useState(30);
+
   // Strategy parameters
   const [entryThreshold, setEntryThreshold] = useState(2.0);
   const [exitThreshold, setExitThreshold] = useState(0.0);
@@ -249,6 +254,9 @@ export default function Backtest2Page() {
           entryThreshold,
           exitThreshold,
           stopLoss,
+          useRollingHedge,
+          hedgeRatioLookbackDays,
+          hedgeRecalcIntervalHours: 24.0, // Daily recalculation for rolling hedge
           lookbackHours,
         }),
       });
@@ -281,6 +289,14 @@ export default function Backtest2Page() {
         <h2 className="text-lg font-semibold text-crypto-text mb-4">Configuration</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* === PAIR & INTERVAL === */}
+          <div className="col-span-full">
+            <h3 className="text-sm font-semibold text-crypto-accent mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              Pair & Interval
+            </h3>
+          </div>
+
           {/* Asset 1 */}
           <div>
             <label className="text-sm text-crypto-muted mb-2 block">Asset 1</label>
@@ -332,6 +348,14 @@ export default function Backtest2Page() {
             </Select>
           </div>
 
+          {/* === LOOKBACK & DATA === */}
+          <div className="col-span-full border-t border-crypto-border pt-6 mt-2">
+            <h3 className="text-sm font-semibold text-crypto-accent mb-3 flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Lookback & Data Parameters
+            </h3>
+          </div>
+
           {/* Hedge Ratio Period */}
           <div>
             <label className="text-sm text-crypto-muted mb-2 block">Hedge Ratio Period (days)</label>
@@ -365,6 +389,49 @@ export default function Backtest2Page() {
             <p className="text-xs text-crypto-muted mt-1">
               Rolling window for Z-Score normalization
             </p>
+          </div>
+
+          {/* Use Rolling Hedge Ratio */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="rolling-hedge"
+              checked={useRollingHedge}
+              onCheckedChange={(checked) => setUseRollingHedge(checked as boolean)}
+            />
+            <label
+              htmlFor="rolling-hedge"
+              className="text-sm text-crypto-text cursor-pointer"
+            >
+              Use Rolling Hedge Ratio
+            </label>
+          </div>
+
+          {/* Hedge Ratio Lookback (only shown when rolling hedge is enabled) */}
+          {useRollingHedge && (
+            <div>
+              <label className="text-sm text-crypto-muted mb-2 block">
+                Hedge Ratio Lookback (days)
+              </label>
+              <Input
+                type="number"
+                value={hedgeRatioLookbackDays}
+                onChange={(e) => setHedgeRatioLookbackDays(Number(e.target.value))}
+                className="bg-crypto-bg border-crypto-border text-crypto-text"
+                min={7}
+                max={365}
+              />
+              <p className="text-xs text-crypto-muted mt-1">
+                Rolling window for dynamic hedge ratio (β recalculated daily)
+              </p>
+            </div>
+          )}
+
+          {/* === TRADING STRATEGY === */}
+          <div className="col-span-full border-t border-crypto-border pt-6 mt-2">
+            <h3 className="text-sm font-semibold text-crypto-accent mb-3 flex items-center gap-2">
+              <Target className="w-4 h-4" />
+              Trading Strategy
+            </h3>
           </div>
 
           {/* Entry Threshold */}

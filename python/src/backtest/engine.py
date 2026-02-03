@@ -33,6 +33,9 @@ class BacktestConfig:
     stop_loss: float = 3.0  # Stop if |Z| > 3
     commission_pct: float = 0.0004  # Binance Futures taker
     slippage_bps: float = 3.0  # ~3 bps slippage
+    use_rolling_hedge: bool = False  # Use rolling OLS for hedge ratio
+    hedge_ratio_lookback_days: Optional[float] = 30.0  # Lookback for rolling hedge ratio
+    hedge_recalc_interval_hours: Optional[float] = 1.0  # Recalculate hedge ratio every N hours (performance optimization)
     use_dynamic_hedge: bool = False  # Kalman filter (not implemented yet)
     lookback_hours: Optional[float] = 24.0  # Time-based lookback (fixes interval bug!)
     force_hedge_ratio: Optional[float] = None  # Override hedge ratio
@@ -153,12 +156,27 @@ def run_backtest(
     # Calculate lookback in bars based on time (fixes the interval bug!)
     if config.lookback_hours:
         lookback_bars = calculate_lookback_bars(config.lookback_hours, interval)
-        print(f"[Backtest] Lookback: {config.lookback_hours}h = {lookback_bars} bars @ {interval}")
+        print(f"[Backtest] Z-Score Lookback: {config.lookback_hours}h = {lookback_bars} bars @ {interval}")
     else:
         lookback_bars = 20  # Fallback to fixed bars if no time specified
 
-    if len(prices1) < lookback_bars + 10:
-        raise ValueError(f"Insufficient data: need at least {lookback_bars + 10} bars")
+    # Calculate hedge ratio lookback if using rolling hedge
+    hedge_ratio_lookback_bars = None
+    hedge_recalc_interval_bars = None
+    if config.use_rolling_hedge and config.hedge_ratio_lookback_days:
+        # Convert days to hours to bars
+        hedge_ratio_hours = config.hedge_ratio_lookback_days * 24
+        hedge_ratio_lookback_bars = calculate_lookback_bars(hedge_ratio_hours, interval)
+        print(f"[Backtest] Hedge Ratio Lookback: {config.hedge_ratio_lookback_days}d = {hedge_ratio_lookback_bars} bars @ {interval}")
+
+        # Calculate recalculation interval (performance optimization)
+        if config.hedge_recalc_interval_hours and config.hedge_recalc_interval_hours > 0:
+            hedge_recalc_interval_bars = calculate_lookback_bars(config.hedge_recalc_interval_hours, interval)
+            print(f"[Backtest] Hedge Ratio Recalc Interval: {config.hedge_recalc_interval_hours}h = {hedge_recalc_interval_bars} bars")
+
+    min_bars_needed = max(lookback_bars, hedge_ratio_lookback_bars or 0) + 10
+    if len(prices1) < min_bars_needed:
+        raise ValueError(f"Insufficient data: need at least {min_bars_needed} bars")
 
     n = len(prices1)
     trades: List[Trade] = []
@@ -170,32 +188,38 @@ def run_backtest(
         slippage_bps=config.slippage_bps,
     )
 
-    # Calculate hedge ratio using Engle-Granger on full dataset
-    # Note: This creates look-ahead bias and is only suitable for backtesting
-    # For live trading, use rolling window or dynamic hedge (Kalman)
+    # Initialize hedge ratio and intercept
+    hedge_ratio = 0.0
+    intercept = 0.0
+    spread = np.zeros(n)  # Pre-allocate spread array
+
+    # Calculate initial hedge ratio
     if config.force_hedge_ratio is not None and config.force_intercept is not None:
         # Use forced parameters (for synthetic tests)
         hedge_ratio = config.force_hedge_ratio
         intercept = config.force_intercept
+        spread = build_spread(prices1, prices2, hedge_ratio, intercept)
         print(f"[Backtest] Using FORCED parameters (synthetic test)")
         print(f"[Backtest] Hedge Ratio (β): {hedge_ratio:.4f}")
         print(f"[Backtest] Intercept (α): {intercept:.4f}")
-    else:
-        # Calculate from data using Engle-Granger
+    elif not config.use_rolling_hedge:
+        # Static hedge ratio: Calculate from data using Engle-Granger on full dataset
+        # Note: This creates look-ahead bias and is only suitable for backtesting
         eg_result = engle_granger_test(prices1, prices2)
         hedge_ratio = eg_result.hedge_ratio
         intercept = eg_result.intercept
+        spread = build_spread(prices1, prices2, hedge_ratio, intercept)
 
-        print(f"[Backtest] Engle-Granger Test:")
+        print(f"[Backtest] STATIC Hedge Ratio (Engle-Granger on full dataset):")
         print(f"  Hedge Ratio (β): {hedge_ratio:.4f}")
         print(f"  Intercept (α): {intercept:.4f}")
         print(f"  ADF Statistic: {eg_result.statistic:.4f}")
         print(f"  P-Value: {eg_result.p_value:.4f}")
         print(f"  Is Cointegrated: {eg_result.is_cointegrated}")
         print(f"  R²: {eg_result.r_squared:.4f}")
-
-    # Build spread for entire series
-    spread = build_spread(prices1, prices2, hedge_ratio, intercept)
+    else:
+        # Rolling hedge ratio: Will be calculated in loop
+        print(f"[Backtest] ROLLING Hedge Ratio (OLS with {config.hedge_ratio_lookback_days}d lookback)")
 
     # Initialize position state
     position = PositionState()
@@ -204,9 +228,41 @@ def run_backtest(
     equity = 1.0
 
     # Main simulation loop
-    for i in range(lookback_bars, n):
+    start_bar = max(lookback_bars, hedge_ratio_lookback_bars or 0)
+    last_hedge_recalc_bar = start_bar - 1  # Track when we last recalculated
+
+    for i in range(start_bar, n):
         p1 = prices1[i]
         p2 = prices2[i]
+
+        # Calculate rolling hedge ratio if enabled
+        if config.use_rolling_hedge and hedge_ratio_lookback_bars:
+            # Check if we need to recalculate hedge ratio
+            should_recalc = False
+            if hedge_recalc_interval_bars is None or hedge_recalc_interval_bars == 0:
+                # Recalculate every bar (slow but most accurate)
+                should_recalc = True
+            elif i == start_bar:
+                # Always calculate on first bar
+                should_recalc = True
+            elif (i - last_hedge_recalc_bar) >= hedge_recalc_interval_bars:
+                # Recalculate based on interval
+                should_recalc = True
+
+            if should_recalc:
+                # Get window for hedge ratio calculation
+                hr_start = max(0, i - hedge_ratio_lookback_bars + 1)
+                window_prices1 = prices1[hr_start:i + 1]
+                window_prices2 = prices2[hr_start:i + 1]
+
+                # Calculate hedge ratio on window
+                eg_result = engle_granger_test(window_prices1, window_prices2)
+                hedge_ratio = eg_result.hedge_ratio
+                intercept = eg_result.intercept
+                last_hedge_recalc_bar = i
+
+            # Update spread for current bar (using current or cached hedge ratio)
+            spread[i] = p1 - intercept - hedge_ratio * p2
 
         # Calculate Z-Score using rolling window
         spread_window = spread[max(0, i - lookback_bars + 1) : i + 1]

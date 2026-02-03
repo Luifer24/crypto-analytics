@@ -17,6 +17,9 @@ interface PythonBacktestConfig {
   stopLoss: number;
   commissionPct: number;
   slippageBps: number;
+  useRollingHedge: boolean;
+  hedgeRatioLookbackDays?: number;
+  hedgeRecalcIntervalHours?: number;
   useDynamicHedge: boolean;
   lookbackHours?: number;
 }
@@ -106,14 +109,38 @@ export function usePythonBacktest(): UsePythonBacktestReturn {
         config: request.config,
       });
 
-      // Backend acepta camelCase gracias a Pydantic aliases
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-      });
+      // Create AbortController with 120-second timeout for long-running backtests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
+
+      let response: Response;
+
+      try {
+        // Backend acepta camelCase gracias a Pydantic aliases
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+
+        // Handle fetch-specific errors with better messages
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Backtest timeout (>2min). Try: reduce data points, disable rolling hedge, or use larger interval.');
+        }
+
+        if (fetchError instanceof TypeError && fetchError.message.includes('fetch')) {
+          throw new Error(`Cannot connect to Python backend at ${endpoint}. Is it running? Check: http://localhost:8000/health`);
+        }
+
+        // Re-throw other errors
+        throw fetchError;
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: response.statusText }));
@@ -178,6 +205,9 @@ export function convertConfigToPython(config: any): PythonBacktestConfig {
     stopLoss: config.stopLoss ?? 3.0,
     commissionPct: config.commissionPct ?? 0.0004,
     slippageBps: config.slippageBps ?? 3,
+    useRollingHedge: config.useRollingHedge ?? false,
+    hedgeRatioLookbackDays: config.hedgeRatioLookbackDays ?? 30.0,
+    hedgeRecalcIntervalHours: config.hedgeRecalcIntervalHours ?? 24.0, // Daily recalculation
     useDynamicHedge: config.useDynamicHedge ?? false,
     lookbackHours: config.lookbackHours ?? 24.0,
   };

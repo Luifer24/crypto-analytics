@@ -48,6 +48,21 @@ class BacktestConfig(BaseModel):
         alias="slippageBps",
         description="Slippage in basis points"
     )
+    use_rolling_hedge: bool = Field(
+        default=False,
+        alias="useRollingHedge",
+        description="Use rolling OLS for hedge ratio"
+    )
+    hedge_ratio_lookback_days: Optional[float] = Field(
+        default=30,
+        alias="hedgeRatioLookbackDays",
+        description="Lookback period in days for rolling hedge ratio"
+    )
+    hedge_recalc_interval_hours: Optional[float] = Field(
+        default=1.0,
+        alias="hedgeRecalcIntervalHours",
+        description="Recalculate hedge ratio every N hours (performance optimization)"
+    )
     use_dynamic_hedge: bool = Field(
         default=False,
         alias="useDynamicHedge",
@@ -186,6 +201,9 @@ async def run_backtest_endpoint(request: BacktestRequest):
             stop_loss=config.stop_loss,
             commission_pct=config.commission_pct,
             slippage_bps=config.slippage_bps,
+            use_rolling_hedge=config.use_rolling_hedge,
+            hedge_ratio_lookback_days=config.hedge_ratio_lookback_days,
+            hedge_recalc_interval_hours=config.hedge_recalc_interval_hours,
             use_dynamic_hedge=config.use_dynamic_hedge,
             lookback_hours=config.lookback_hours,
         )
