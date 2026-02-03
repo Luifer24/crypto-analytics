@@ -10,13 +10,28 @@
  * - Vectorized operations (10-100x faster)
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Play, Zap, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Loader2, Play, Zap, TrendingUp, TrendingDown, BarChart3, Target, Percent, Clock } from 'lucide-react';
 import { usePythonBacktest, convertConfigToPython } from '@/hooks/usePythonBacktest';
 import { useFuturesSymbols } from '@/hooks/useFuturesData';
+import { cn } from '@/lib/utils';
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -26,6 +41,37 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+
+// ============================================================================
+// Components
+// ============================================================================
+
+/**
+ * Reusable metric card component
+ */
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  valueClass,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="bg-crypto-card rounded-lg border border-crypto-border p-4">
+      <div className="flex items-center gap-2 text-crypto-muted text-sm mb-2">
+        <Icon className="w-4 h-4" />
+        {label}
+      </div>
+      <p className={cn("text-xl font-bold", valueClass || "text-crypto-text")}>
+        {value}
+      </p>
+    </div>
+  );
+}
 
 // ============================================================================
 // Helpers
@@ -213,355 +259,413 @@ export default function Backtest2Page() {
   };
 
   return (
-    <div className="w-full px-6 py-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-crypto-text flex items-center gap-3">
+            <Zap className="w-6 h-6 text-crypto-accent" />
             Backtest 2.0
             <Badge variant="default" className="bg-gradient-to-r from-purple-500 to-blue-500">
-              <Zap className="w-3 h-3 mr-1" />
               Python Powered
             </Badge>
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-crypto-muted mt-1">
             Professional backtesting with statsmodels • Time-based lookback • 10-100x faster
           </p>
         </div>
       </div>
 
-      {/* Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Configuration</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {/* Symbol 1 */}
-            <div>
-              <label className="text-sm font-medium">Asset 1</label>
-              <select
-                value={symbol1}
-                onChange={(e) => setSymbol1(e.target.value)}
-                className="w-full mt-1 p-2 border rounded"
-                disabled={isLoadingSymbols}
-              >
-                {availableSymbols.map(s => (
-                  <option key={s} value={s}>{s}</option>
+      {/* Configuration Panel */}
+      <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+        <h2 className="text-lg font-semibold text-crypto-text mb-4">Configuration</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Asset 1 */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">Asset 1</label>
+            <Select value={symbol1} onValueChange={setSymbol1} disabled={isLoadingSymbols}>
+              <SelectTrigger className="bg-crypto-bg border-crypto-border text-crypto-text">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-crypto-card border-crypto-border">
+                {availableSymbols.map((s) => (
+                  <SelectItem key={s} value={s} className="text-crypto-text">
+                    {s}
+                  </SelectItem>
                 ))}
-              </select>
-            </div>
-
-            {/* Symbol 2 */}
-            <div>
-              <label className="text-sm font-medium">Asset 2</label>
-              <select
-                value={symbol2}
-                onChange={(e) => setSymbol2(e.target.value)}
-                className="w-full mt-1 p-2 border rounded"
-                disabled={isLoadingSymbols}
-              >
-                {availableSymbols.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Interval */}
-            <div>
-              <label className="text-sm font-medium">Interval</label>
-              <select
-                value={interval}
-                onChange={(e) => setInterval(e.target.value)}
-                className="w-full mt-1 p-2 border rounded"
-              >
-                <option value="5m">5 min</option>
-                <option value="15m">15 min</option>
-                <option value="1h">1 hour</option>
-                <option value="4h">4 hours</option>
-                <option value="1d">1 day</option>
-              </select>
-            </div>
-
-            {/* Lookback Days */}
-            <div>
-              <label className="text-sm font-medium">Lookback Days</label>
-              <input
-                type="number"
-                value={lookbackDays}
-                onChange={(e) => setLookbackDays(Number(e.target.value))}
-                className="w-full mt-1 p-2 border rounded"
-                min={7}
-                max={365}
-              />
-            </div>
-
-            {/* Lookback Hours */}
-            <div>
-              <label className="text-sm font-medium">Rolling Window (hours)</label>
-              <input
-                type="number"
-                value={lookbackHours}
-                onChange={(e) => setLookbackHours(Number(e.target.value))}
-                className="w-full mt-1 p-2 border rounded"
-                min={1}
-                max={168}
-                step={1}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Window for calculating Z-Score mean/std
-              </p>
-            </div>
-
-            {/* Run Button */}
-            <div className="flex items-end">
-              <Button
-                onClick={handleRunBacktest}
-                disabled={isLoadingSymbols || isRunning || availableSymbols.length === 0}
-                className="w-full"
-              >
-                {isRunning ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Run Backtest
-                  </>
-                )}
-              </Button>
-            </div>
+              </SelectContent>
+            </Select>
           </div>
 
-          {/* Strategy Parameters */}
-          <div className="mt-6 pt-6 border-t">
-            <h3 className="text-sm font-semibold mb-4">Strategy Parameters</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Entry Threshold */}
-              <div>
-                <label className="text-sm font-medium">Entry Z-Score</label>
-                <input
-                  type="number"
-                  value={entryThreshold}
-                  onChange={(e) => setEntryThreshold(Number(e.target.value))}
-                  className="w-full mt-1 p-2 border rounded"
-                  min={0.5}
-                  max={5}
-                  step={0.1}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Enter trade when |Z| exceeds this
-                </p>
-              </div>
-
-              {/* Exit Threshold */}
-              <div>
-                <label className="text-sm font-medium">Exit Z-Score</label>
-                <input
-                  type="number"
-                  value={exitThreshold}
-                  onChange={(e) => setExitThreshold(Number(e.target.value))}
-                  className="w-full mt-1 p-2 border rounded"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Exit when Z-score crosses this (mean reversion)
-                </p>
-              </div>
-
-              {/* Stop Loss */}
-              <div>
-                <label className="text-sm font-medium">Stop Loss Z-Score</label>
-                <input
-                  type="number"
-                  value={stopLoss}
-                  onChange={(e) => setStopLoss(Number(e.target.value))}
-                  className="w-full mt-1 p-2 border rounded"
-                  min={1}
-                  max={10}
-                  step={0.1}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Exit if Z-score exceeds this (stop loss)
-                </p>
-              </div>
-            </div>
+          {/* Asset 2 */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">Asset 2</label>
+            <Select value={symbol2} onValueChange={setSymbol2} disabled={isLoadingSymbols}>
+              <SelectTrigger className="bg-crypto-bg border-crypto-border text-crypto-text">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-crypto-card border-crypto-border">
+                {availableSymbols.map((s) => (
+                  <SelectItem key={s} value={s} className="text-crypto-text">
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          {/* Error Display */}
-          {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded text-red-800">
-              <strong>Error:</strong> {error}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* Interval */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">Interval</label>
+            <Select value={interval} onValueChange={setInterval}>
+              <SelectTrigger className="bg-crypto-bg border-crypto-border text-crypto-text">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-crypto-card border-crypto-border">
+                <SelectItem value="5m" className="text-crypto-text">5 min</SelectItem>
+                <SelectItem value="15m" className="text-crypto-text">15 min</SelectItem>
+                <SelectItem value="1h" className="text-crypto-text">1 hour</SelectItem>
+                <SelectItem value="4h" className="text-crypto-text">4 hours</SelectItem>
+                <SelectItem value="1d" className="text-crypto-text">1 day</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Lookback Days */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">Lookback Days</label>
+            <Input
+              type="number"
+              value={lookbackDays}
+              onChange={(e) => setLookbackDays(Number(e.target.value))}
+              className="bg-crypto-bg border-crypto-border text-crypto-text"
+              min={7}
+              max={365}
+            />
+          </div>
+
+          {/* Lookback Hours */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">
+              Rolling Window (hours)
+            </label>
+            <Input
+              type="number"
+              value={lookbackHours}
+              onChange={(e) => setLookbackHours(Number(e.target.value))}
+              className="bg-crypto-bg border-crypto-border text-crypto-text"
+              min={1}
+              max={168}
+              step={1}
+            />
+            <p className="text-xs text-crypto-muted mt-1">
+              Window for calculating Z-Score mean/std
+            </p>
+          </div>
+
+          {/* Entry Threshold */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">Entry Z-Score</label>
+            <Input
+              type="number"
+              value={entryThreshold}
+              onChange={(e) => setEntryThreshold(Number(e.target.value))}
+              className="bg-crypto-bg border-crypto-border text-crypto-text"
+              min={0.5}
+              max={5}
+              step={0.1}
+            />
+            <p className="text-xs text-crypto-muted mt-1">
+              Enter trade when |Z| exceeds this
+            </p>
+          </div>
+
+          {/* Exit Threshold */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">Exit Z-Score</label>
+            <Input
+              type="number"
+              value={exitThreshold}
+              onChange={(e) => setExitThreshold(Number(e.target.value))}
+              className="bg-crypto-bg border-crypto-border text-crypto-text"
+              min={0}
+              max={2}
+              step={0.1}
+            />
+            <p className="text-xs text-crypto-muted mt-1">
+              Exit when Z-score crosses this (mean reversion)
+            </p>
+          </div>
+
+          {/* Stop Loss */}
+          <div>
+            <label className="text-sm text-crypto-muted mb-2 block">Stop Loss Z-Score</label>
+            <Input
+              type="number"
+              value={stopLoss}
+              onChange={(e) => setStopLoss(Number(e.target.value))}
+              className="bg-crypto-bg border-crypto-border text-crypto-text"
+              min={1}
+              max={10}
+              step={0.1}
+            />
+            <p className="text-xs text-crypto-muted mt-1">
+              Exit if Z-score exceeds this (stop loss)
+            </p>
+          </div>
+        </div>
+
+        {/* Run Button */}
+        <div className="mt-6">
+          <button
+            onClick={handleRunBacktest}
+            disabled={isRunning || isLoadingSymbols || availableSymbols.length === 0}
+            className={cn(
+              "px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors",
+              isRunning || isLoadingSymbols || availableSymbols.length === 0
+                ? "bg-crypto-muted/20 text-crypto-muted cursor-not-allowed"
+                : "bg-crypto-accent text-white hover:bg-crypto-accent/80"
+            )}
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Running...
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                Run Backtest
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
+            <p className="text-red-500">{error}</p>
+          </div>
+        )}
+      </div>
 
       {/* Results */}
       {result && priceData && (
         <>
-          {/* Metrics Row - Full Width */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Return</p>
-                    <p className={`text-2xl font-bold ${result.metrics.total_return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {(result.metrics.total_return * 100).toFixed(2)}%
-                    </p>
-                  </div>
-                  {result.metrics.total_return >= 0 ? (
-                    <TrendingUp className="h-8 w-8 text-green-600" />
-                  ) : (
-                    <TrendingDown className="h-8 w-8 text-red-600" />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Sharpe Ratio</p>
-                    <p className="text-2xl font-bold">{result.metrics.sharpe.toFixed(2)}</p>
-                  </div>
-                  <Activity className="h-8 w-8 text-blue-600" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Trades</p>
-                  <p className="text-2xl font-bold">{result.metrics.total_trades}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Win Rate: {(result.metrics.win_rate * 100).toFixed(1)}%
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div>
-                  <p className="text-sm text-muted-foreground">Max Drawdown</p>
-                  <p className="text-2xl font-bold text-red-600">
-                    {(result.metrics.max_drawdown * 100).toFixed(2)}%
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Profit Factor: {result.metrics.profit_factor.toFixed(2)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Metrics Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <MetricCard
+              icon={TrendingUp}
+              label="Total Return"
+              value={`${(result.metrics.total_return * 100).toFixed(2)}%`}
+              valueClass={result.metrics.total_return >= 0 ? "text-green-500" : "text-red-500"}
+            />
+            <MetricCard
+              icon={BarChart3}
+              label="Sharpe Ratio"
+              value={result.metrics.sharpe.toFixed(2)}
+              valueClass={result.metrics.sharpe >= 1 ? "text-green-500" : "text-crypto-text"}
+            />
+            <MetricCard
+              icon={TrendingDown}
+              label="Max Drawdown"
+              value={`${(result.metrics.max_drawdown * 100).toFixed(2)}%`}
+              valueClass="text-red-500"
+            />
+            <MetricCard
+              icon={Percent}
+              label="Win Rate"
+              value={`${(result.metrics.win_rate * 100).toFixed(1)}%`}
+              valueClass={result.metrics.win_rate >= 0.5 ? "text-green-500" : "text-crypto-text"}
+            />
+            <MetricCard
+              icon={Target}
+              label="Profit Factor"
+              value={result.metrics.profit_factor.toFixed(2)}
+              valueClass={result.metrics.profit_factor >= 1.5 ? "text-green-500" : "text-crypto-text"}
+            />
+            <MetricCard
+              icon={Clock}
+              label="Total Trades"
+              value={result.metrics.total_trades.toString()}
+            />
           </div>
 
           {/* Two-Column Layout: Equity Curve (left) + Price & Z-Score (right) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left: Equity Curve */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Equity Curve</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[600px]">
+            <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+              <h3 className="text-lg font-semibold text-crypto-text mb-4">Equity Curve</h3>
+              <div className="h-[600px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart
+                    data={result.equity_curve.map((value, index) => ({
+                      timestamp: priceData.timestamps[index],
+                      pnl: (value - 1) * 100, // Convert to %PnL: 1.0 → 0%, 1.2 → 20%, 0.9 → -10%
+                    }))}
+                    margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+                  >
+                    <defs>
+                      <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
+                      </linearGradient>
+                      <linearGradient id="equityGradientNegative" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="timestamp"
+                      tickFormatter={(ts) => formatTimestamp(ts, interval)}
+                      tick={{ fontSize: 10 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                      stroke="#6b7280"
+                    />
+                    <YAxis
+                      label={{ value: '%PnL', angle: -90, position: 'insideLeft' }}
+                      tick={{ fontSize: 10 }}
+                      stroke="#6b7280"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1a1a2e",
+                        border: "1px solid #2d2d44",
+                        borderRadius: "8px",
+                      }}
+                      labelStyle={{ color: "#9ca3af" }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const pnl = payload[0].value as number;
+                          const timestamp = payload[0].payload.timestamp;
+                          return (
+                            <div className="bg-crypto-card border border-crypto-border rounded p-2 shadow-lg text-xs">
+                              <p className="font-semibold text-crypto-muted">{formatTimestamp(timestamp, interval)}</p>
+                              <p className={pnl >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                PnL: {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="3 3" label={{ value: 'Break-even', fontSize: 10 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="pnl"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Right: Price + Z-Score Charts */}
+            <div className="space-y-6">
+              <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-crypto-text">Asset Prices & Signals</h3>
+                  <div className="flex gap-3 text-xs">
+                    <span className="flex items-center gap-1 text-crypto-muted">
+                      <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                      {symbol1}
+                    </span>
+                    <span className="flex items-center gap-1 text-crypto-muted">
+                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                      {symbol2}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsLineChart
-                      data={result.equity_curve.map((value, index) => ({
+                      data={priceData.prices1.map((price1, index) => ({
+                        index,
                         timestamp: priceData.timestamps[index],
-                        pnl: (value - 1) * 100, // Convert to %PnL: 1.0 → 0%, 1.2 → 20%, 0.9 → -10%
+                        price1: price1,
+                        price2: priceData.prices2[index],
                       }))}
-                      margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+                      margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
                     >
-                      <defs>
-                        <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
-                        </linearGradient>
-                        <linearGradient id="equityGradientNegative" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
-                        </linearGradient>
-                      </defs>
                       <XAxis
                         dataKey="timestamp"
                         tickFormatter={(ts) => formatTimestamp(ts, interval)}
-                        tick={{ fontSize: 10 }}
+                        tick={{ fontSize: 9 }}
                         angle={-45}
                         textAnchor="end"
-                        height={60}
+                        height={50}
+                        stroke="#6b7280"
                       />
                       <YAxis
-                        label={{ value: '%PnL', angle: -90, position: 'insideLeft' }}
+                        yAxisId="left"
                         tick={{ fontSize: 10 }}
+                        stroke="#6b7280"
+                        label={{ value: symbol1, angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
+                      />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fontSize: 10 }}
+                        stroke="#6b7280"
+                        label={{ value: symbol2, angle: 90, position: 'insideRight', style: { fontSize: 10 } }}
                       />
                       <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#1a1a2e",
+                          border: "1px solid #2d2d44",
+                          borderRadius: "8px",
+                        }}
+                        labelStyle={{ color: "#9ca3af" }}
                         content={({ active, payload }) => {
                           if (active && payload && payload.length) {
-                            const pnl = payload[0].value as number;
                             const timestamp = payload[0].payload.timestamp;
                             return (
-                              <div className="bg-background border rounded p-2 shadow-lg text-xs">
-                                <p className="font-semibold">{formatTimestamp(timestamp, interval)}</p>
-                                <p className={pnl >= 0 ? 'text-green-600' : 'text-red-600'}>
-                                  PnL: {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%
-                                </p>
+                              <div className="bg-crypto-card border border-crypto-border rounded p-2 shadow-lg text-xs">
+                                <p className="font-semibold text-crypto-muted">{formatTimestamp(timestamp, interval)}</p>
+                                <p className="text-blue-500">{symbol1}: ${payload[0].value?.toFixed(4)}</p>
+                                <p className="text-green-500">{symbol2}: ${payload[1]?.value?.toFixed(4)}</p>
                               </div>
                             );
                           }
                           return null;
                         }}
                       />
-                      <ReferenceLine y={0} stroke="#666" strokeDasharray="3 3" label={{ value: 'Break-even', fontSize: 10 }} />
                       <Line
+                        yAxisId="left"
                         type="monotone"
-                        dataKey="pnl"
-                        stroke="#8884d8"
-                        strokeWidth={2}
+                        dataKey="price1"
+                        stroke="#3b82f6"
+                        strokeWidth={1.5}
                         dot={false}
-                        fill="url(#equityGradient)"
+                        name={symbol1}
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="price2"
+                        stroke="#10b981"
+                        strokeWidth={1.5}
+                        dot={false}
+                        name={symbol2}
                       />
                     </RechartsLineChart>
                   </ResponsiveContainer>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
 
-            {/* Right: Price + Z-Score Charts */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Asset Prices & Signals</span>
-                    <div className="flex gap-3 text-xs">
-                      <span className="flex items-center gap-1">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                        {symbol1}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        {symbol2}
-                      </span>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-72">
+              <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+                <h3 className="text-lg font-semibold text-crypto-text mb-4">Z-Score</h3>
+                <div className="h-64">
+                  {zScoreData ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <RechartsLineChart
-                        data={priceData.prices1.map((price1, index) => ({
-                          index,
-                          timestamp: priceData.timestamps[index],
-                          price1: price1,
-                          price2: priceData.prices2[index],
-                        }))}
+                        data={zScoreData}
                         margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
                       >
                         <XAxis
@@ -571,247 +675,181 @@ export default function Backtest2Page() {
                           angle={-45}
                           textAnchor="end"
                           height={50}
+                          stroke="#6b7280"
                         />
                         <YAxis
-                          yAxisId="left"
                           tick={{ fontSize: 10 }}
-                          label={{ value: symbol1, angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
-                        />
-                        <YAxis
-                          yAxisId="right"
-                          orientation="right"
-                          tick={{ fontSize: 10 }}
-                          label={{ value: symbol2, angle: 90, position: 'insideRight', style: { fontSize: 10 } }}
+                          stroke="#6b7280"
+                          domain={[-4, 4]}
                         />
                         <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#1a1a2e",
+                            border: "1px solid #2d2d44",
+                            borderRadius: "8px",
+                          }}
+                          labelStyle={{ color: "#9ca3af" }}
                           content={({ active, payload }) => {
                             if (active && payload && payload.length) {
                               const timestamp = payload[0].payload.timestamp;
                               return (
-                                <div className="bg-background border rounded p-2 shadow-lg text-xs">
-                                  <p className="font-semibold">{formatTimestamp(timestamp, interval)}</p>
-                                  <p className="text-blue-500">{symbol1}: ${payload[0].value?.toFixed(4)}</p>
-                                  <p className="text-green-500">{symbol2}: ${payload[1]?.value?.toFixed(4)}</p>
+                                <div className="bg-crypto-card border border-crypto-border rounded p-2 shadow-lg text-xs">
+                                  <p className="font-semibold text-crypto-muted">{formatTimestamp(timestamp, interval)}</p>
+                                  <p className="text-crypto-text">Z-Score: {payload[0].value?.toFixed(3)}</p>
                                 </div>
                               );
                             }
                             return null;
                           }}
                         />
+                        {/* Entry thresholds */}
+                        <ReferenceLine y={entryThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: `+${entryThreshold}`, fontSize: 10, fill: '#ef4444' }} />
+                        <ReferenceLine y={-entryThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: `-${entryThreshold}`, fontSize: 10, fill: '#ef4444' }} />
+                        {/* Exit threshold */}
+                        <ReferenceLine y={exitThreshold} stroke="#10b981" strokeDasharray="3 3" label={{ value: `${exitThreshold}`, fontSize: 10, fill: '#10b981' }} />
+                        {/* Stop loss */}
+                        <ReferenceLine y={stopLoss} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: `+${stopLoss}`, fontSize: 10, fill: '#f59e0b' }} />
+                        <ReferenceLine y={-stopLoss} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: `-${stopLoss}`, fontSize: 10, fill: '#f59e0b' }} />
                         <Line
-                          yAxisId="left"
                           type="monotone"
-                          dataKey="price1"
-                          stroke="#3b82f6"
+                          dataKey="zScore"
+                          stroke="#8b5cf6"
                           strokeWidth={1.5}
                           dot={false}
-                          name={symbol1}
-                        />
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="price2"
-                          stroke="#10b981"
-                          strokeWidth={1.5}
-                          dot={false}
-                          name={symbol2}
                         />
                       </RechartsLineChart>
                     </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Z-Score</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64">
-                    {zScoreData ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RechartsLineChart
-                          data={zScoreData}
-                          margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
-                        >
-                          <XAxis
-                            dataKey="timestamp"
-                            tickFormatter={(ts) => formatTimestamp(ts, interval)}
-                            tick={{ fontSize: 9 }}
-                            angle={-45}
-                            textAnchor="end"
-                            height={50}
-                          />
-                          <YAxis
-                            tick={{ fontSize: 10 }}
-                            domain={[-4, 4]}
-                          />
-                          <Tooltip
-                            content={({ active, payload }) => {
-                              if (active && payload && payload.length) {
-                                const timestamp = payload[0].payload.timestamp;
-                                return (
-                                  <div className="bg-background border rounded p-2 shadow-lg text-xs">
-                                    <p className="font-semibold">{formatTimestamp(timestamp, interval)}</p>
-                                    <p>Z-Score: {payload[0].value?.toFixed(3)}</p>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            }}
-                          />
-                          {/* Entry thresholds */}
-                          <ReferenceLine y={entryThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: `+${entryThreshold}`, fontSize: 10, fill: '#ef4444' }} />
-                          <ReferenceLine y={-entryThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: `-${entryThreshold}`, fontSize: 10, fill: '#ef4444' }} />
-                          {/* Exit threshold */}
-                          <ReferenceLine y={exitThreshold} stroke="#10b981" strokeDasharray="3 3" label={{ value: `${exitThreshold}`, fontSize: 10, fill: '#10b981' }} />
-                          {/* Stop loss */}
-                          <ReferenceLine y={stopLoss} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: `+${stopLoss}`, fontSize: 10, fill: '#f59e0b' }} />
-                          <ReferenceLine y={-stopLoss} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: `-${stopLoss}`, fontSize: 10, fill: '#f59e0b' }} />
-                          <Line
-                            type="monotone"
-                            dataKey="zScore"
-                            stroke="#8b5cf6"
-                            strokeWidth={1.5}
-                            dot={false}
-                          />
-                        </RechartsLineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <p className="text-sm text-muted-foreground">Run backtest to see Z-Score</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-sm text-crypto-muted">Run backtest to see Z-Score</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Detailed Metrics */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Performance Metrics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Annualized Return</p>
-                  <p className="font-semibold">{(result.metrics.annualized_return * 100).toFixed(2)}%</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Sortino Ratio</p>
-                  <p className="font-semibold">{result.metrics.sortino.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Trade PnL</p>
-                  <p className="font-semibold">{(result.metrics.avg_trade_pnl * 100).toFixed(3)}%</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Holding (bars)</p>
-                  <p className="font-semibold">{result.metrics.avg_holding_period.toFixed(1)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Winning Trades</p>
-                  <p className="font-semibold text-green-600">{result.metrics.winning_trades}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Losing Trades</p>
-                  <p className="font-semibold text-red-600">{result.metrics.losing_trades}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Execution Time</p>
-                  <p className="font-semibold">{result.execution_time_ms.toFixed(0)}ms</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Engine</p>
-                  <p className="font-semibold text-purple-600">Python + statsmodels</p>
-                </div>
+          <div className="bg-crypto-card rounded-lg border border-crypto-border p-6">
+            <h3 className="text-lg font-semibold text-crypto-text mb-4">Performance Metrics</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-sm text-crypto-muted">Annualized Return</p>
+                <p className="font-semibold text-crypto-text">{(result.metrics.annualized_return * 100).toFixed(2)}%</p>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <p className="text-sm text-crypto-muted">Sortino Ratio</p>
+                <p className="font-semibold text-crypto-text">{result.metrics.sortino.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-crypto-muted">Avg Trade PnL</p>
+                <p className="font-semibold text-crypto-text">{(result.metrics.avg_trade_pnl * 100).toFixed(3)}%</p>
+              </div>
+              <div>
+                <p className="text-sm text-crypto-muted">Avg Holding (bars)</p>
+                <p className="font-semibold text-crypto-text">{result.metrics.avg_holding_period.toFixed(1)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-crypto-muted">Winning Trades</p>
+                <p className="font-semibold text-green-500">{result.metrics.winning_trades}</p>
+              </div>
+              <div>
+                <p className="text-sm text-crypto-muted">Losing Trades</p>
+                <p className="font-semibold text-red-500">{result.metrics.losing_trades}</p>
+              </div>
+              <div>
+                <p className="text-sm text-crypto-muted">Execution Time</p>
+                <p className="font-semibold text-crypto-text">{result.execution_time_ms.toFixed(0)}ms</p>
+              </div>
+              <div>
+                <p className="text-sm text-crypto-muted">Engine</p>
+                <p className="font-semibold text-purple-500">Python + statsmodels</p>
+              </div>
+            </div>
+          </div>
 
           {/* Trades Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Trade History ({result.trades.length} trades)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-2">#</th>
-                      <th className="text-left p-2">Side</th>
-                      <th className="text-right p-2">Entry Z</th>
-                      <th className="text-right p-2">Exit Z</th>
-                      <th className="text-right p-2">PnL</th>
-                      <th className="text-right p-2">Holding</th>
-                      <th className="text-left p-2">Exit Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.trades.slice(0, 50).map((trade, i) => (
-                      <tr key={i} className="border-b hover:bg-muted/50">
-                        <td className="p-2">{i + 1}</td>
-                        <td className="p-2">
-                          <Badge variant={trade.side === 'long_spread' ? 'default' : 'secondary'}>
-                            {trade.side === 'long_spread' ? 'Long' : 'Short'}
-                          </Badge>
-                        </td>
-                        <td className="text-right p-2">{trade.entry_z_score.toFixed(2)}</td>
-                        <td className="text-right p-2">{trade.exit_z_score.toFixed(2)}</td>
-                        <td className={`text-right p-2 font-semibold ${trade.pnl_net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {(trade.pnl_net * 100).toFixed(2)}%
-                        </td>
-                        <td className="text-right p-2">{trade.holding_period}</td>
-                        <td className="p-2 text-xs">{trade.exit_reason}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {result.trades.length > 50 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Showing first 50 of {result.trades.length} trades
-                  </p>
-                )}
+          <div className="bg-crypto-card rounded-lg border border-crypto-border overflow-hidden">
+            <div className="p-4 border-b border-crypto-border">
+              <h3 className="text-lg font-semibold text-crypto-text">
+                Trade History ({result.trades.length} trades)
+              </h3>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-crypto-border hover:bg-transparent">
+                  <TableHead className="text-crypto-muted">#</TableHead>
+                  <TableHead className="text-crypto-muted">Side</TableHead>
+                  <TableHead className="text-crypto-muted text-right">Entry Z</TableHead>
+                  <TableHead className="text-crypto-muted text-right">Exit Z</TableHead>
+                  <TableHead className="text-crypto-muted text-right">PnL</TableHead>
+                  <TableHead className="text-crypto-muted text-right">Holding</TableHead>
+                  <TableHead className="text-crypto-muted">Exit Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {result.trades.slice(0, 50).map((trade, i) => (
+                  <TableRow key={i} className="border-crypto-border">
+                    <TableCell className="text-crypto-muted">{i + 1}</TableCell>
+                    <TableCell>
+                      <span className={cn(
+                        "px-2 py-1 text-xs rounded",
+                        trade.side === "long_spread"
+                          ? "bg-green-500/20 text-green-500"
+                          : "bg-red-500/20 text-red-500"
+                      )}>
+                        {trade.side === "long_spread" ? "Long" : "Short"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-crypto-text">{trade.entry_z_score.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-mono text-crypto-text">{trade.exit_z_score.toFixed(2)}</TableCell>
+                    <TableCell className={cn("text-right font-mono font-semibold", trade.pnl_net >= 0 ? "text-green-500" : "text-red-500")}>
+                      {(trade.pnl_net * 100).toFixed(2)}%
+                    </TableCell>
+                    <TableCell className="text-right text-crypto-text">{trade.holding_period}</TableCell>
+                    <TableCell className="text-crypto-muted capitalize text-xs">{trade.exit_reason}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {result.trades.length > 50 && (
+              <div className="p-4 text-center text-crypto-muted text-sm border-t border-crypto-border">
+                Showing first 50 of {result.trades.length} trades
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
         </>
       )}
 
       {/* Info Banner */}
       {!result && !isRunning && (
-        <Card className="border-purple-200/50">
-          <CardContent className="pt-6">
-            <h3 className="font-semibold mb-3 text-purple-700 dark:text-purple-400">
-              Python-Powered Professional Backtesting
-            </h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
-                <span><strong>Time-based lookback:</strong> Consistent 24h window across all intervals</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
-                <span><strong>statsmodels integration:</strong> Professional Engle-Granger cointegration test</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
-                <span><strong>Proper annualization:</strong> Correct Sharpe ratio for all intervals</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
-                <span><strong>Vectorized operations:</strong> 10-100x speed improvement with pandas/numpy</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 mt-0.5">•</span>
-                <span><strong>Type-safe:</strong> Python dataclasses for reliability</span>
-              </li>
-            </ul>
-          </CardContent>
-        </Card>
+        <div className="bg-crypto-card rounded-lg border border-purple-500/30 p-6">
+          <h3 className="font-semibold mb-3 text-purple-400">
+            Python-Powered Professional Backtesting
+          </h3>
+          <ul className="space-y-2 text-sm text-crypto-muted">
+            <li className="flex items-start gap-2">
+              <span className="text-purple-400 mt-0.5">•</span>
+              <span><strong className="text-crypto-text">Time-based lookback:</strong> Consistent 24h window across all intervals</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-purple-400 mt-0.5">•</span>
+              <span><strong className="text-crypto-text">statsmodels integration:</strong> Professional Engle-Granger cointegration test</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-purple-400 mt-0.5">•</span>
+              <span><strong className="text-crypto-text">Proper annualization:</strong> Correct Sharpe ratio for all intervals</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-purple-400 mt-0.5">•</span>
+              <span><strong className="text-crypto-text">Vectorized operations:</strong> 10-100x speed improvement with pandas/numpy</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-purple-400 mt-0.5">•</span>
+              <span><strong className="text-crypto-text">Type-safe:</strong> Python dataclasses for reliability</span>
+            </li>
+          </ul>
+        </div>
       )}
     </div>
   );
